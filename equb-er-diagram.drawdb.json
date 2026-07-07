@@ -1,0 +1,398 @@
+{
+  "title": "Equb App - Database ER Diagram (v2)",
+  "database": "mysql",
+  "tables": [
+    {
+      "id": 0,
+      "name": "users",
+      "x": 50,
+      "y": 50,
+      "color": "#1a73e8",
+      "comment": "Members and admins of the Equb system. Role determines access level (member = mobile app, admin = admin dashboard).",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "name", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Full name" },
+        { "id": 2, "name": "phone", "type": "VARCHAR(20)", "default": "", "check": "", "primary": false, "unique": true, "notNull": true, "increment": false, "comment": "Phone number (login credential)" },
+        { "id": 3, "name": "email", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Optional email address" },
+        { "id": 4, "name": "password", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Bcrypt hashed password" },
+        { "id": 5, "name": "fayda_id", "type": "VARCHAR(20)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Ethiopian national Fayda ID (optional for registration)" },
+        { "id": 6, "name": "role", "type": "ENUM('member','admin')", "default": "'member'", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "User role: member (mobile app user) or admin (backend dashboard)" },
+        { "id": 7, "name": "status", "type": "ENUM('active','lien')", "default": "'active'", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Account status — lien means restricted/frozen" },
+        { "id": 8, "name": "work_address", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Work/physical address" },
+        { "id": 9, "name": "registration_date", "type": "DATE", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Date of account registration" },
+        { "id": 10, "name": "remember_token", "type": "VARCHAR(100)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Laravel remember-me token for session persistence" },
+        { "id": 11, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Record creation timestamp" },
+        { "id": 12, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Last update timestamp (auto-updated by DB)" }
+      ],
+      "indices": [
+        { "name": "users_phone_unique", "unique": true, "fields": ["phone"] },
+        { "name": "users_role_index", "unique": false, "fields": ["role"] },
+        { "name": "users_status_index", "unique": false, "fields": ["status"] }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "slots",
+      "x": 500,
+      "y": 50,
+      "color": "#34a853",
+      "comment": "Member slots — each slot represents a membership in a specific tier category. A user can have multiple slots across different categories.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "user_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to users.id — slot owner" },
+        { "id": 2, "name": "category", "type": "VARCHAR(20)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Tier category: 500 ETB, 1000 ETB, 2000 ETB, 5000 ETB, or savings" },
+        { "id": 3, "name": "slot_number", "type": "INT", "default": "", "check": "slot_number > 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Sequential slot number within the category (unique per category)" },
+        { "id": 4, "name": "status", "type": "ENUM('active','lien')", "default": "'active'", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Slot status — lien means restricted/frozen" },
+        { "id": 5, "name": "has_won", "type": "BOOLEAN", "default": "false", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Whether this slot has won a draw in the current round" },
+        { "id": 6, "name": "deal_closed", "type": "BOOLEAN", "default": "false", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Whether the slot deal is closed (completed cycle)" },
+        { "id": 7, "name": "balance", "type": "DECIMAL(12,2)", "default": "0.00", "check": "balance >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Current monetary balance (must be >= 0)" },
+        { "id": 8, "name": "consecutive_missed_sweeps", "type": "INT", "default": "0", "check": "consecutive_missed_sweeps >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Number of consecutive missed payment days" },
+        { "id": 9, "name": "deposited_today", "type": "BOOLEAN", "default": "false", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Whether a payment was deposited today" },
+        { "id": 10, "name": "unique_payment_code", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": true, "notNull": false, "increment": false, "comment": "Unique payment code for this slot (nullable, queried by admin)" },
+        { "id": 11, "name": "payout_code", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Payout code for withdrawals (nullable, queried by admin)" },
+        { "id": 12, "name": "registration_date", "type": "DATE", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Slot registration date" },
+        { "id": 13, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 14, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "slots_user_id_index", "unique": false, "fields": ["user_id"] },
+        { "name": "slots_category_index", "unique": false, "fields": ["category"] },
+        { "name": "slots_status_index", "unique": false, "fields": ["status"] },
+        { "name": "slots_category_slot_number_unique", "unique": true, "fields": ["category", "slot_number"] },
+        { "name": "slots_user_category_index", "unique": false, "fields": ["user_id", "category"] },
+        { "name": "slots_unique_payment_code_index", "unique": true, "fields": ["unique_payment_code"] },
+        { "name": "slots_payout_code_index", "unique": false, "fields": ["payout_code"] }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "payments",
+      "x": 50,
+      "y": 400,
+      "color": "#f9ab00",
+      "comment": "Per-day payment schedule records for each slot. Each day in the cycle generates one payment record.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "slot_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to slots.id — which slot this payment belongs to" },
+        { "id": 2, "name": "user_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to users.id — who made the payment" },
+        { "id": 3, "name": "day_index", "type": "INT", "default": "", "check": "day_index > 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Day number within the payment schedule for this slot" },
+        { "id": 4, "name": "date", "type": "DATE", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Scheduled payment date" },
+        { "id": 5, "name": "amount", "type": "DECIMAL(12,2)", "default": "", "check": "amount >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Payment amount in ETB (must be >= 0)" },
+        { "id": 6, "name": "status", "type": "ENUM('paid','unpaid')", "default": "'unpaid'", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Payment status" },
+        { "id": 7, "name": "trans_ref", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Transaction reference number from payment gateway" },
+        { "id": 8, "name": "method", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Payment method (e.g., USSD, Telebirr)" },
+        { "id": 9, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 10, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "payments_slot_id_index", "unique": false, "fields": ["slot_id"] },
+        { "name": "payments_user_id_index", "unique": false, "fields": ["user_id"] },
+        { "name": "payments_status_index", "unique": false, "fields": ["status"] },
+        { "name": "payments_slot_day_status_index", "unique": false, "fields": ["slot_id", "status"] },
+        { "name": "payments_slot_day_user_unique", "unique": true, "fields": ["slot_id", "day_index", "user_id"] }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "payment_logs",
+      "x": 500,
+      "y": 400,
+      "color": "#e8710a",
+      "comment": "Audit log for all payment transactions. Denormalized user_name is intentional — ensures historical record persists even if user data changes later.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "user_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to users.id — the user who performed the transaction" },
+        { "id": 2, "name": "user_name", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Denormalized user name (preserved for audit trail even if user is deleted)" },
+        { "id": 3, "name": "amount", "type": "DECIMAL(12,2)", "default": "", "check": "amount >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Transaction amount" },
+        { "id": 4, "name": "status", "type": "ENUM('success','failed')", "default": "'success'", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Transaction outcome" },
+        { "id": 5, "name": "payment_gateway", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Payment gateway used (e.g., Telebirr)" },
+        { "id": 6, "name": "trans_ref", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "External transaction reference" },
+        { "id": 7, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 8, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "payment_logs_user_id_index", "unique": false, "fields": ["user_id"] },
+        { "name": "payment_logs_status_index", "unique": false, "fields": ["status"] },
+        { "name": "payment_logs_gateway_index", "unique": false, "fields": ["payment_gateway"] }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "draws",
+      "x": 950,
+      "y": 50,
+      "color": "#e8453c",
+      "comment": "Draw/raffle records. Each draw randomly selects a winning slot within a category. FK to slots ensures referential integrity.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "slot_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to slots.id — the winning slot" },
+        { "id": 2, "name": "spin_id", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": true, "notNull": true, "increment": false, "comment": "Unique spin/draw identifier (e.g., SPIN-XXXXX)" },
+        { "id": 3, "name": "round", "type": "INT", "default": "", "check": "round > 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Round number within the category" },
+        { "id": 4, "name": "category", "type": "VARCHAR(20)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Tier category (500, 1000, 2000, 5000)" },
+        { "id": 5, "name": "winning_slot_number", "type": "INT", "default": "", "check": "winning_slot_number > 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Denormalized winning slot number for quick display" },
+        { "id": 6, "name": "winner_name", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Denormalized winner name (display convenience)" },
+        { "id": 7, "name": "net_payout", "type": "DECIMAL(12,2)", "default": "", "check": "net_payout >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Amount paid to winner (90% of total collected)" },
+        { "id": 8, "name": "commission_amount", "type": "DECIMAL(12,2)", "default": "0.00", "check": "commission_amount >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Platform commission (10% of total collected)" },
+        { "id": 9, "name": "total_collected", "type": "DECIMAL(12,2)", "default": "0.00", "check": "total_collected >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Total daily amount collected from all active slots in this category" },
+        { "id": 10, "name": "draw_date", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Date and time the draw was performed" },
+        { "id": 11, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 12, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "draws_spin_id_unique", "unique": true, "fields": ["spin_id"] },
+        { "name": "draws_slot_id_index", "unique": false, "fields": ["slot_id"] },
+        { "name": "draws_category_index", "unique": false, "fields": ["category"] },
+        { "name": "draws_round_index", "unique": false, "fields": ["round"] },
+        { "name": "draws_category_round_index", "unique": false, "fields": ["category", "round"] }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "savings_transactions",
+      "x": 950,
+      "y": 400,
+      "color": "#1e8e3e",
+      "comment": "Savings account deposit and withdrawal records. Each transaction is either a deposit (positive) or withdrawal (net after 2% commission).",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "user_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to users.id — transaction owner" },
+        { "id": 2, "name": "slot_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "FK to slots.id — savings account for this slot" },
+        { "id": 3, "name": "type", "type": "ENUM('deposit','withdrawal')", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Transaction type: deposit or withdrawal" },
+        { "id": 4, "name": "amount", "type": "DECIMAL(12,2)", "default": "", "check": "amount > 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Gross transaction amount (must be > 0)" },
+        { "id": 5, "name": "commission", "type": "DECIMAL(12,2)", "default": "0.00", "check": "commission >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Commission charged (2% on withdrawals)" },
+        { "id": 6, "name": "net_amount", "type": "DECIMAL(12,2)", "default": "", "check": "net_amount >= 0", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Net amount after commission (amount - commission)" },
+        { "id": 7, "name": "trans_ref", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Transaction reference number" },
+        { "id": 8, "name": "method", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Transaction method (e.g., USSD)" },
+        { "id": 9, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 10, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "savings_transactions_user_id_index", "unique": false, "fields": ["user_id"] },
+        { "name": "savings_transactions_slot_id_index", "unique": false, "fields": ["slot_id"] },
+        { "name": "savings_transactions_type_index", "unique": false, "fields": ["type"] },
+        { "name": "savings_transactions_slot_type_index", "unique": false, "fields": ["slot_id", "type"] }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "sms_logs",
+      "x": 50,
+      "y": 750,
+      "color": "#9334e6",
+      "comment": "Outbound SMS audit log. Records all SMS messages sent to members (notifications, alerts, OTPs).",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "user_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "FK to users.id — admin who triggered the SMS (nullable for system-triggered)" },
+        { "id": 2, "name": "recipient", "type": "VARCHAR(20)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Recipient phone number" },
+        { "id": 3, "name": "type", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "SMS type/category (e.g., OTP, payment_reminder, draw_alert)" },
+        { "id": 4, "name": "message", "type": "TEXT", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "SMS message body content" },
+        { "id": 5, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 6, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "sms_logs_user_id_index", "unique": false, "fields": ["user_id"] },
+        { "name": "sms_logs_recipient_index", "unique": false, "fields": ["recipient"] },
+        { "name": "sms_logs_type_index", "unique": false, "fields": ["type"] }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "settings",
+      "x": 500,
+      "y": 750,
+      "color": "#fbbc04",
+      "comment": "Key-value application settings. Used for dynamic configuration like draw times, commission rates, and feature flags.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "key", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": true, "notNull": true, "increment": false, "comment": "Setting key (e.g., draw_time, commission_rate)" },
+        { "id": 2, "name": "value", "type": "JSON", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Setting value in JSON format (supports strings, numbers, booleans)" },
+        { "id": 3, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 4, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "settings_key_unique", "unique": true, "fields": ["key"] }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "personal_access_tokens",
+      "x": 950,
+      "y": 750,
+      "color": "#6c757d",
+      "comment": "Sanctum API token storage. Used for Bearer token authentication between mobile app and Laravel backend.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": true, "comment": "Primary key" },
+        { "id": 1, "name": "tokenable_type", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Morph type (App\\Models\\User)" },
+        { "id": 2, "name": "tokenable_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Morph ID — references users.id" },
+        { "id": 3, "name": "name", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Token name (e.g., equb-token)" },
+        { "id": 4, "name": "token", "type": "VARCHAR(64)", "default": "", "check": "", "primary": false, "unique": true, "notNull": true, "increment": false, "comment": "SHA-256 hashed token value" },
+        { "id": 5, "name": "abilities", "type": "TEXT", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Comma-separated token abilities/permissions" },
+        { "id": 6, "name": "last_used_at", "type": "TIMESTAMP", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Timestamp of last token usage" },
+        { "id": 7, "name": "expires_at", "type": "TIMESTAMP", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Token expiration timestamp" },
+        { "id": 8, "name": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" },
+        { "id": 9, "name": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "" }
+      ],
+      "indices": [
+        { "name": "personal_access_tokens_tokenable_index", "unique": false, "fields": ["tokenable_type", "tokenable_id"] },
+        { "name": "personal_access_tokens_token_unique", "unique": true, "fields": ["token"] }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "password_reset_tokens",
+      "x": 50,
+      "y": 1050,
+      "color": "#adb5bd",
+      "comment": "Laravel password reset token storage. Used for the forgot-password OTP flow.",
+      "fields": [
+        { "id": 0, "name": "email", "type": "VARCHAR(255)", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": false, "comment": "User email (primary key)" },
+        { "id": 1, "name": "token", "type": "VARCHAR(255)", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Hashed reset token" },
+        { "id": 2, "name": "created_at", "type": "TIMESTAMP", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Token creation timestamp" }
+      ],
+      "indices": []
+    },
+    {
+      "id": 10,
+      "name": "sessions",
+      "x": 500,
+      "y": 1050,
+      "color": "#ced4da",
+      "comment": "Laravel session storage for web-based admin access.",
+      "fields": [
+        { "id": 0, "name": "id", "type": "VARCHAR(255)", "default": "", "check": "", "primary": true, "unique": true, "notNull": true, "increment": false, "comment": "Session ID (primary key)" },
+        { "id": 1, "name": "user_id", "type": "BIGINT UNSIGNED", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "FK to users.id (nullable for guests)" },
+        { "id": 2, "name": "ip_address", "type": "VARCHAR(45)", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Client IP address" },
+        { "id": 3, "name": "user_agent", "type": "TEXT", "default": "", "check": "", "primary": false, "unique": false, "notNull": false, "increment": false, "comment": "Browser user agent string" },
+        { "id": 4, "name": "payload", "type": "LONGTEXT", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Serialized session data" },
+        { "id": 5, "name": "last_activity", "type": "INT", "default": "", "check": "", "primary": false, "unique": false, "notNull": true, "increment": false, "comment": "Unix timestamp of last activity" }
+      ],
+      "indices": [
+        { "name": "sessions_user_id_index", "unique": false, "fields": ["user_id"] },
+        { "name": "sessions_last_activity_index", "unique": false, "fields": ["last_activity"] }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": 0,
+      "name": "slots_user_id_fk",
+      "startTableId": 1,
+      "startFieldId": 1,
+      "endTableId": 0,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 1,
+      "name": "payments_slot_id_fk",
+      "startTableId": 2,
+      "startFieldId": 1,
+      "endTableId": 1,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 2,
+      "name": "payments_user_id_fk",
+      "startTableId": 2,
+      "startFieldId": 2,
+      "endTableId": 0,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 3,
+      "name": "payment_logs_user_id_fk",
+      "startTableId": 3,
+      "startFieldId": 1,
+      "endTableId": 0,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 4,
+      "name": "savings_transactions_user_id_fk",
+      "startTableId": 5,
+      "startFieldId": 1,
+      "endTableId": 0,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 5,
+      "name": "savings_transactions_slot_id_fk",
+      "startTableId": 5,
+      "startFieldId": 2,
+      "endTableId": 1,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 6,
+      "name": "sms_logs_user_id_fk",
+      "startTableId": 6,
+      "startFieldId": 1,
+      "endTableId": 0,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 7,
+      "name": "draws_slot_id_fk",
+      "startTableId": 4,
+      "startFieldId": 1,
+      "endTableId": 1,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    }
+  ],
+  "notes": [
+    {
+      "id": 0,
+      "x": 50,
+      "y": 1300,
+      "title": "📊 Equb Database ER Diagram v2",
+      "content": "Complete database schema for the Equb savings & lottery app.\n\n🔑 **11 Tables:**\n• users — Members and admins\n• slots — Membership slots per tier category\n• payments — Daily payment schedule per slot\n• payment_logs — Payment audit trail (denormalized user_name for history)\n• draws — Draw/raffle records (FK to slots added)\n• savings_transactions — Savings deposits & withdrawals\n• sms_logs — Outbound SMS history\n• settings — Key-value app configuration\n• personal_access_tokens — Sanctum API auth (NEW)\n• password_reset_tokens — Password reset OTP storage (NEW)\n• sessions — Laravel web sessions (NEW)\n\n✅ **Improvements made (vs v1):**\n1. Added 3 framework tables (Sanctum, sessions, password_resets)\n2. Added CHECK constraints on all monetary/count fields (>=0 or >0)\n3. Added FK draws.slot_id → slots.id for referential integrity\n4. ON UPDATE CURRENT_TIMESTAMP on all updated_at columns\n5. Added composite indexes for real query patterns\n6. UNIQUE (category, slot_number) instead of global slot_number\n7. CHECK (amount > 0) on savings_transactions\n8. Expanded payments unique to (slot_id, day_index, user_id)\n9. Added indexes on unique_payment_code & payout_code\n10. Documented denormalization justification in comments",
+      "color": "#ffffff",
+      "height": 380
+    }
+  ],
+  "subjectAreas": [
+    {
+      "id": 0,
+      "name": "🔵 Application Tables",
+      "x": 30,
+      "y": 30,
+      "width": 1200,
+      "height": 830,
+      "color": "#1a73e8",
+      "locked": false
+    },
+    {
+      "id": 1,
+      "name": "⚙️ Framework Tables (Laravel)",
+      "x": 30,
+      "y": 900,
+      "width": 1200,
+      "height": 280,
+      "color": "#6c757d",
+      "locked": false
+    }
+  ]
+}

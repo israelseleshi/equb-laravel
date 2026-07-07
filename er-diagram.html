@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Equb App — Database ER Diagram</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #eef0f4;
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 20px;
+  }
+
+  .title-bar {
+    width: 100%;
+    max-width: 1540px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .title-bar h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0b0c0e;
+    letter-spacing: -0.4px;
+  }
+
+  .title-bar .badge {
+    background: #0b0c0e;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    letter-spacing: 0.4px;
+  }
+
+  .title-bar .stats {
+    margin-left: auto;
+    display: flex;
+    gap: 18px;
+    font-size: 12px;
+    color: #5f6368;
+  }
+
+  .title-bar .stats b { color: #0b0c0e; font-weight: 700; }
+
+  .diagram {
+    position: relative;
+    width: 1540px;
+    height: 1320px;
+    background: #ffffff;
+    border: 1px solid #c4c7cc;
+    overflow: hidden;
+  }
+
+  .subject-area {
+    position: absolute;
+    border: 2px dashed #c4c7cc;
+    pointer-events: none;
+  }
+
+  .subject-area .sa-label {
+    position: absolute;
+    top: -9px;
+    left: 14px;
+    background: #fff;
+    padding: 0 7px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #5f6368;
+    letter-spacing: 0.5px;
+  }
+
+  /* --- SVG lines --- */
+  .svg-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .svg-lines path { fill: none; stroke: #2c2c2c; stroke-width: 1.5; stroke-linejoin: miter; stroke-linecap: square; }
+
+  .mult-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    font-weight: 800;
+    fill: #0b0c0e;
+    dominant-baseline: central;
+    text-anchor: middle;
+  }
+
+  .mult-bg {
+    fill: #ffffff;
+    stroke: none;
+  }
+
+  .rule-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 8px;
+    font-weight: 500;
+    fill: #5f6368;
+    dominant-baseline: central;
+    text-anchor: middle;
+  }
+
+  /* --- Table cards --- */
+  .tables {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+  }
+
+  .card {
+    position: absolute;
+    width: 274px;
+    border: 1.5px solid #0b0c0e;
+    background: #fff;
+    font-size: 11.5px;
+  }
+
+  .card-hdr {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    border-bottom: 1.5px solid #0b0c0e;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .card-hdr .icon { font-size: 14px; }
+
+  .card-hdr .note {
+    font-size: 9px;
+    font-weight: 400;
+    opacity: 0.75;
+    margin-left: auto;
+    max-width: 110px;
+    text-align: right;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .card-body { list-style: none; }
+
+  .card-body li {
+    display: flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-bottom: 1px solid #eceef0;
+    font-size: 11.5px;
+    color: #202124;
+    gap: 5px;
+    min-height: 26px;
+  }
+
+  .card-body li:last-child { border-bottom: none; }
+
+  .key-tag {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    line-height: 1.3;
+    flex-shrink: 0;
+  }
+
+  .key-tag.pk  { background: #0b0c0e; color: #fff; }
+  .key-tag.fk  { background: transparent; color: #5f6368; border: 1.5px solid #9aa0a6; }
+  .key-tag.pf  { background: #0b0c0e; color: #fff; border: 1.5px solid #5f6368; }
+
+  .col-name {
+    font-weight: 600;
+    color: #0b0c0e;
+    flex-shrink: 0;
+  }
+
+  .col-type {
+    color: #5f6368;
+    font-size: 9.5px;
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', monospace;
+    margin-left: auto;
+    text-align: right;
+    max-width: 105px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .col-ct {
+    display: flex;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+
+  .col-ct span {
+    font-size: 8px;
+    font-weight: 700;
+    color: #9aa0a6;
+  }
+  .col-ct .nn { color: #d93025; }
+  .col-ct .uq { color: #1a73e8; }
+  .col-ct .ch { color: #e37400; }
+
+  .card-idx {
+    padding: 4px 12px;
+    border-top: 1px solid #eceef0;
+    font-size: 9px;
+    color: #5f6368;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* --- Legend --- */
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin-top: 18px;
+    padding: 12px 20px;
+    background: #fff;
+    border: 1px solid #c4c7cc;
+    font-size: 11px;
+    color: #5f6368;
+    max-width: 1540px;
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .legend .lg { display: flex; gap: 14px; align-items: center; }
+  .legend .lg-lbl { font-weight: 700; color: #0b0c0e; margin-right: 2px; }
+
+  .legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #0b0c0e;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  .legend .key-tag { display: inline; margin-right: 4px; }
+  .legend-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+  .legend .mult-svg { display: inline-block; vertical-align: middle; }
+  .legend .mult-line { stroke: #2c2c2c; stroke-width: 1.5; }
+  .legend .mult-txt { font-size: 9px; font-weight: 800; fill: #0b0c0e; }
+
+  hr.leg-div { width: 1px; height: 20px; background: #d2d4d8; border: none; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="title-bar">
+  <h1>Equb App — Database ER Diagram</h1>
+  <span class="badge">v2</span>
+  <div class="stats">
+    <b id="statTables">—</b> tables &nbsp;·&nbsp;
+    <b id="statRelationships">—</b> relationships &nbsp;·&nbsp;
+    <b id="statColumns">—</b> columns
+  </div>
+</div>
+
+<div class="diagram" id="diagram">
+  <svg class="svg-lines" id="svgLayer"></svg>
+  <div class="tables" id="tableLayer"></div>
+</div>
+<div class="legend" id="legend"></div>
+
+<script>
+// ================================================================
+// DATA
+// ================================================================
+const TABLES = [
+  { id:0, name:'users',                 x:36,  y:36,  color:'#1a2b4c', icon:'👤', comment:'Members & admins',
+    fields:[
+      { n:'id',                   t:'BIGINT UNSIGNED',        pk:1, fk:0, uq:1, nn:1, ch:''   },
+      { n:'name',                 t:'VARCHAR(255)',           pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'phone',                t:'VARCHAR(20)',            pk:0, fk:0, uq:1, nn:1, ch:''   },
+      { n:'email',                t:'VARCHAR(255)',           pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'password',             t:'VARCHAR(255)',           pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'fayda_id',             t:'VARCHAR(20)',            pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'role',                 t:"ENUM('member','admin')", pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'status',               t:"ENUM('active','lien')",  pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'work_address',         t:'VARCHAR(255)',           pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'registration_date',    t:'DATE',                   pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'remember_token',       t:'VARCHAR(100)',           pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'created_at',           t:'TIMESTAMP',              pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'updated_at',           t:'TIMESTAMP',              pk:0, fk:0, uq:0, nn:1, ch:''   },
+    ],
+    idx:[] },
+  { id:1, name:'slots',                x:390, y:36,  color:'#1b5e2a', icon:'🎯', comment:'Membership slots per tier',
+    fields:[
+      { n:'id',                       t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:''   },
+      { n:'user_id',                  t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'category',                 t:'VARCHAR(20)',       pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'slot_number',              t:'INT',               pk:0, fk:0, uq:0, nn:1, ch:'>0' },
+      { n:'status',                   t:"ENUM('active','lien')", pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'has_won',                  t:'BOOLEAN',           pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'deal_closed',              t:'BOOLEAN',           pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'balance',                  t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'consecutive_missed_sweeps',t:'INT',               pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'deposited_today',          t:'BOOLEAN',           pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'unique_payment_code',      t:'VARCHAR(255)',      pk:0, fk:0, uq:1, nn:0, ch:''   },
+      { n:'payout_code',              t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'registration_date',        t:'DATE',              pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'created_at',               t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'updated_at',               t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+    ],
+    idx:['category+slot_number (UQ)','user_id+category'] },
+  { id:2, name:'payments',              x:36,  y:390, color:'#b85c00', icon:'💳', comment:'Per-day payment schedule',
+    fields:[
+      { n:'id',            t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:''   },
+      { n:'slot_id',       t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'user_id',       t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'day_index',     t:'INT',               pk:0, fk:0, uq:0, nn:1, ch:'>0' },
+      { n:'date',          t:'DATE',              pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'amount',        t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'status',        t:"ENUM('paid','unpaid')", pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'trans_ref',     t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'method',        t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'created_at',    t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'updated_at',    t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+    ],
+    idx:['slot_id+status','slot_id+day_index+user_id (UQ)'] },
+  { id:3, name:'payment_logs',          x:390, y:390, color:'#b8430a', icon:'📋', comment:'Audit trail (denormalized)',
+    fields:[
+      { n:'id',             t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:''   },
+      { n:'user_id',        t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'user_name',      t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'amount',         t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'status',         t:"ENUM('success','failed')", pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'payment_gateway',t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'trans_ref',      t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'created_at',     t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'updated_at',     t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+    ],
+    idx:['user_id','payment_gateway'] },
+  { id:4, name:'draws',                 x:744, y:36,  color:'#a52a2a', icon:'🎲', comment:'Draw / raffle records',
+    fields:[
+      { n:'id',                 t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:''   },
+      { n:'slot_id',            t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'spin_id',            t:'VARCHAR(255)',      pk:0, fk:0, uq:1, nn:1, ch:''   },
+      { n:'round',              t:'INT',               pk:0, fk:0, uq:0, nn:1, ch:'>0' },
+      { n:'category',           t:'VARCHAR(20)',       pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'winning_slot_number',t:'INT',               pk:0, fk:0, uq:0, nn:1, ch:'>0' },
+      { n:'winner_name',        t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'net_payout',         t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'commission_amount',  t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'total_collected',    t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'draw_date',          t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'created_at',         t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'updated_at',         t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+    ],
+    idx:['category+round'] },
+  { id:5, name:'savings_transactions',  x:744, y:390, color:'#1b6b3a', icon:'💰', comment:'Deposits & withdrawals',
+    fields:[
+      { n:'id',          t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:''   },
+      { n:'user_id',     t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'slot_id',     t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:''   },
+      { n:'type',        t:"ENUM('deposit','withdrawal')", pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'amount',      t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>0' },
+      { n:'commission',  t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'net_amount',  t:'DECIMAL(12,2)',     pk:0, fk:0, uq:0, nn:1, ch:'>=0'},
+      { n:'trans_ref',   t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'method',      t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:0, ch:''   },
+      { n:'created_at',  t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+      { n:'updated_at',  t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:''   },
+    ],
+    idx:['slot_id+type','user_id'] },
+  { id:6, name:'sms_logs',              x:36,  y:760, color:'#5e2b8c', icon:'📨', comment:'Outbound SMS audit',
+    fields:[
+      { n:'id',         t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:'' },
+      { n:'user_id',    t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:0, ch:'' },
+      { n:'recipient',  t:'VARCHAR(20)',       pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'type',       t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'message',    t:'TEXT',              pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'created_at', t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'updated_at', t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:'' },
+    ],
+    idx:['recipient','type'] },
+  { id:7, name:'settings',              x:390, y:760, color:'#b06e00', icon:'⚙️', comment:'Key-value config',
+    fields:[
+      { n:'id',         t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:'' },
+      { n:'key',        t:'VARCHAR(255)',      pk:0, fk:0, uq:1, nn:1, ch:'' },
+      { n:'value',      t:'JSON',              pk:0, fk:0, uq:0, nn:0, ch:'' },
+      { n:'created_at', t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'updated_at', t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:'' },
+    ],
+    idx:[] },
+  { id:8, name:'personal_access_tokens', x:744, y:760, color:'#37474f', icon:'🔑', comment:'Sanctum API tokens',
+    fields:[
+      { n:'id',            t:'BIGINT UNSIGNED',   pk:1, fk:0, uq:1, nn:1, ch:'' },
+      { n:'tokenable_type',t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'tokenable_id',  t:'BIGINT UNSIGNED',   pk:0, fk:1, uq:0, nn:1, ch:'' },
+      { n:'name',          t:'VARCHAR(255)',      pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'token',         t:'VARCHAR(64)',       pk:0, fk:0, uq:1, nn:1, ch:'' },
+      { n:'abilities',     t:'TEXT',              pk:0, fk:0, uq:0, nn:0, ch:'' },
+      { n:'last_used_at',  t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:0, ch:'' },
+      { n:'expires_at',    t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:0, ch:'' },
+      { n:'created_at',    t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'updated_at',    t:'TIMESTAMP',         pk:0, fk:0, uq:0, nn:1, ch:'' },
+    ],
+    idx:['tokenable_type+tokenable_id'] },
+  { id:9, name:'password_reset_tokens',  x:36,  y:1080, color:'#5f6368', icon:'🔄', comment:'Reset OTP storage',
+    fields:[
+      { n:'email',      t:'VARCHAR(255)',   pk:1, fk:0, uq:1, nn:1, ch:'' },
+      { n:'token',      t:'VARCHAR(255)',   pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'created_at', t:'TIMESTAMP',      pk:0, fk:0, uq:0, nn:0, ch:'' },
+    ],
+    idx:[] },
+  { id:10, name:'sessions',             x:390, y:1080, color:'#80868f', icon:'🖥️', comment:'Laravel web sessions',
+    fields:[
+      { n:'id',           t:'VARCHAR(255)',    pk:1, fk:0, uq:1, nn:1, ch:'' },
+      { n:'user_id',      t:'BIGINT UNSIGNED', pk:0, fk:1, uq:0, nn:0, ch:'' },
+      { n:'ip_address',   t:'VARCHAR(45)',     pk:0, fk:0, uq:0, nn:0, ch:'' },
+      { n:'user_agent',   t:'TEXT',            pk:0, fk:0, uq:0, nn:0, ch:'' },
+      { n:'payload',      t:'LONGTEXT',        pk:0, fk:0, uq:0, nn:1, ch:'' },
+      { n:'last_activity',t:'INT',             pk:0, fk:0, uq:0, nn:1, ch:'' },
+    ],
+    idx:['user_id','last_activity'] },
+];
+
+const RELS = [
+  { st:1, sf:'user_id', et:0, ef:'id', card:'many_to_one', rule:'CASCADE' },
+  { st:2, sf:'slot_id', et:1, ef:'id', card:'many_to_one', rule:'CASCADE' },
+  { st:2, sf:'user_id', et:0, ef:'id', card:'many_to_one', rule:'CASCADE' },
+  { st:3, sf:'user_id', et:0, ef:'id', card:'many_to_one', rule:'CASCADE' },
+  { st:5, sf:'user_id', et:0, ef:'id', card:'many_to_one', rule:'CASCADE' },
+  { st:5, sf:'slot_id', et:1, ef:'id', card:'many_to_one', rule:'CASCADE' },
+  { st:6, sf:'user_id', et:0, ef:'id', card:'many_to_one', rule:'SET NULL' },
+  { st:4, sf:'slot_id', et:1, ef:'id', card:'many_to_one', rule:'RESTRICT' },
+];
+
+const CARD = {
+  one_to_one:  ['1','1'],
+  one_to_many: ['1','N'],
+  many_to_one: ['N','1'],
+};
+
+const CW = 274; // card width
+const BH = 26; // base row height
+const HD = 32; // header height
+
+// ================================================================
+// RENDER
+// ================================================================
+function render() {
+  const diagram = document.getElementById('diagram');
+  const svg = document.getElementById('svgLayer');
+  const tblLayer = document.getElementById('tableLayer');
+
+  // clear
+  svg.innerHTML = '';
+  tblLayer.innerHTML = '';
+
+  // Build lookup
+  const tMap = {};
+  TABLES.forEach(t => { tMap[t.id] = t; });
+
+  // ---- Subject areas ----
+  const sas = [
+    { x:14, y:14, w:1170, h:900,  l:'APPLICATION TABLES' },
+    { x:14, y:942, w:1170, h:350, l:'FRAMEWORK TABLES (LARAVEL)' },
+  ];
+  sas.forEach(a => {
+    const d = document.createElement('div');
+    d.className = 'subject-area';
+    d.style.cssText = `left:${a.x}px;top:${a.y}px;width:${a.w}px;height:${a.h}px`;
+    d.innerHTML = `<div class="sa-label">${a.l}</div>`;
+    tblLayer.appendChild(d);
+  });
+
+  // ---- Table cards ----
+  let totalCols = 0;
+  TABLES.forEach(t => {
+    totalCols += t.fields.length;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = `left:${t.x}px;top:${t.y}px;`;
+
+    const rows = t.fields.map(f => {
+      let kt = '', kc = '';
+      if      (f.pk && f.fk) { kt = 'PK/FK'; kc = 'pf'; }
+      else if (f.pk)         { kt = 'PK';    kc = 'pk'; }
+      else if (f.fk)         { kt = 'FK';    kc = 'fk'; }
+
+      const cc = [];
+      if (!f.pk && f.uq) cc.push('<span class="uq" title="UNIQUE">UQ</span>');
+      if (f.nn) cc.push('<span class="nn" title="NOT NULL">NN</span>');
+      if (f.ch) cc.push('<span class="ch" title="CHECK: '+f.ch+'">CH</span>');
+
+      return `<li>
+        ${kt ? `<span class="key-tag ${kc}">${kt}</span>` : ''}
+        <span class="col-name">${f.n}</span>
+        <span class="col-type">${f.t}</span>
+        <span class="col-ct">${cc.join('')}</span>
+      </li>`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="card-hdr" style="background:${t.color};">
+        <span class="icon">${t.icon}</span>
+        ${t.name}
+        <span class="note">${t.comment}</span>
+      </div>
+      <ul class="card-body">${rows}</ul>
+      ${t.idx.length ? `<div class="card-idx">▸ ${t.idx.join(' &bull; ')}</div>` : ''}
+    `;
+    tblLayer.appendChild(card);
+  });
+
+  // ---- SVG relationship lines ----
+  const W = 1540, H = 1320;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  // For each start table, track how many lines exit from its right edge (y offset stack)
+  const exitOffset = {};
+  const enterOffset = {};
+  // Pre-assign offsets per (start,end) pair
+  const lineOffsets = {};
+  RELS.forEach((rel, idx) => {
+    const sk = rel.st, ek = rel.et;
+    exitOffset[sk] = (exitOffset[sk] || 0) + 1;
+    enterOffset[ek] = (enterOffset[ek] || 0) + 1;
+    lineOffsets[idx] = {
+      exitIdx: exitOffset[sk] - 1,
+      enterIdx: enterOffset[ek] - 1,
+    };
+  });
+
+  // Reset and compute absolute connection points
+  const usedExit = {};
+  const usedEnter = {};
+  const lines = [];
+
+  RELS.forEach((rel, idx) => {
+    const st = tMap[rel.st], et = tMap[rel.et];
+    if (!st || !et) return;
+
+    const sH = HD + st.fields.length * BH + (st.idx.length ? 22 : 0);
+    const eH = HD + et.fields.length * BH + (et.idx.length ? 22 : 0);
+
+    // Exit from right edge of start table
+    usedExit[rel.st] = (usedExit[rel.st] || 0) + 1;
+    usedEnter[rel.et] = (usedEnter[rel.et] || 0) + 1;
+
+    // Space out the connection points vertically along the edge
+    const exitCount = exitOffset[rel.st] || 1;
+    const enterCount = enterOffset[rel.et] || 1;
+
+    const exitY = st.y + HD + (st.fields.length * BH) * (usedExit[rel.st] - 0.5) / (exitCount || 1);
+    const enterY = et.y + HD + (et.fields.length * BH) * (usedEnter[rel.et] - 0.5) / (enterCount || 1);
+
+    const sx = st.x + CW;
+    const sy = Math.max(st.y + 20, Math.min(st.y + sH - 12, exitY));
+    const ex = et.x;
+    const ey = Math.max(et.y + 20, Math.min(et.y + eH - 12, enterY));
+
+    // Determine route type based on relative positions
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const gap = 20;
+
+    let pathD;
+    let midX;
+
+    if (dy > 0) {
+      // End is below — staircase right-down-left
+      midX = (sx + ex) / 2;
+      pathD = `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ey} L ${ex} ${ey}`;
+    } else if (dy < -40) {
+      // End is above — staircase right-up-left
+      midX = (sx + ex) / 2;
+      pathD = `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ey} L ${ex} ${ey}`;
+    } else {
+      // Same row level — go right then vertical detour then left
+      const detourY = Math.min(sy, ey) - 30 - (usedExit[rel.st] % 3) * 12;
+      midX = (sx + ex) / 2;
+      pathD = `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${detourY} L ${midX} ${ey} L ${ex} ${ey}`;
+    }
+
+    const cardLabels = CARD[rel.card] || ['N','1'];
+
+    lines.push({ pathD, sx, sy, ex, ey, startMult: cardLabels[0], endMult: cardLabels[1], rule: rel.rule, midX });
+  });
+
+  // Draw lines
+  let svgContent = '';
+  lines.forEach(l => {
+    svgContent += `<path d="${l.pathD}" />`;
+
+    // Multiplicity at start (near right edge of start table)
+    svgContent += `
+      <rect x="${l.sx + 4}" y="${l.sy - 8}" width="14" height="16" class="mult-bg" rx="0" />
+      <text x="${l.sx + 11}" y="${l.sy}" class="mult-label">${l.startMult}</text>`;
+
+    // Multiplicity at end (near left edge of end table)
+    svgContent += `
+      <rect x="${l.ex - 18}" y="${l.ey - 8}" width="14" height="16" class="mult-bg" rx="0" />
+      <text x="${l.ex - 11}" y="${l.ey}" class="mult-label">${l.endMult}</text>`;
+
+    // Delete rule label at midpoint top
+    const labelY = Math.min(l.sy, l.ey) - 14;
+    svgContent += `
+      <rect x="${l.midX - 28}" y="${labelY - 7}" width="56" height="14" class="mult-bg" rx="0" />
+      <text x="${l.midX}" y="${labelY}" class="rule-label">${l.rule}</text>`;
+  });
+
+  svg.innerHTML = svgContent;
+
+  // ---- Stats ----
+  document.getElementById('statTables').textContent = TABLES.length;
+  document.getElementById('statRelationships').textContent = RELS.length;
+  document.getElementById('statColumns').textContent = totalCols;
+
+  // ---- Legend ----
+  const colorChips = TABLES.map(t =>
+    `<span class="legend-item"><span class="swatch" style="background:${t.color}"></span>${t.name}</span>`
+  ).join('');
+
+  document.getElementById('legend').innerHTML = `
+    <div class="lg">
+      <span class="lg-lbl">Tables:</span>
+      ${colorChips}
+    </div>
+    <hr class="leg-div">
+    <div class="lg">
+      <span class="lg-lbl">Keys:</span>
+      <span class="legend-item"><span class="key-tag pk">PK</span> Primary</span>
+      <span class="legend-item"><span class="key-tag fk">FK</span> Foreign</span>
+      <span class="legend-item"><span class="key-tag pf">PK/FK</span> Composite</span>
+    </div>
+    <hr class="leg-div">
+    <div class="lg">
+      <span class="lg-lbl">Cardinality:</span>
+      <span class="legend-item">
+        <svg width="44" height="14" class="mult-svg">
+          <line x1="0" y1="7" x2="44" y2="7" class="mult-line"/>
+          <text x="6" y="9" class="mult-txt">N</text>
+          <text x="36" y="9" class="mult-txt">1</text>
+        </svg>
+        Many-to-One
+      </span>
+      <span class="legend-item">
+        <svg width="44" height="14" class="mult-svg">
+          <line x1="0" y1="7" x2="44" y2="7" class="mult-line"/>
+          <text x="6" y="9" class="mult-txt">1</text>
+          <text x="36" y="9" class="mult-txt">1</text>
+        </svg>
+        One-to-One
+      </span>
+    </div>
+    <hr class="leg-div">
+    <span class="legend-item">NN = NOT NULL &nbsp; UQ = UNIQUE &nbsp; CH = CHECK</span>
+  `;
+}
+
+render();
+</script>
+</body>
+</html>
