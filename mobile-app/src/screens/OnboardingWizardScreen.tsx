@@ -10,16 +10,16 @@ import {
   Animated,
   Modal,
   ActivityIndicator,
-  Image,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
+import * as Print from 'expo-print'
+import * as Sharing from 'expo-sharing'
 import { colors, spacing } from '../theme'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Card } from '../components/ui/Card'
 import { Text } from '../components/ui/AppText'
-import { CameraCapture } from '../components/CameraCapture'
 import { SignaturePad } from '../components/SignaturePad'
 import { useNavigation } from '../context/NavigationContext'
 import { useTranslation } from '../i18n/useTranslation'
@@ -34,8 +34,35 @@ const CATEGORIES = [
   { id: 'savings', label: 'Savings', daily: 'Flexible', target: 'No limit', color: '#7c3aed' },
 ]
 
-const STEP_LABELS_EN = ['Welcome', 'Verify ID', 'Documents', 'Agreement', 'Payment']
-const STEP_LABELS_AM = ['እንኳን ደህና መጡ', 'ማረጋገጫ', 'ሰነዶች', 'ውል', 'ክፍያ']
+const STEP_LABELS_EN = ['Welcome', 'Verify ID', 'Create Account', 'Agreement', 'Payment']
+const STEP_LABELS_AM = ['እንኳን ደህና መጡ', 'ማረጋገጫ', 'መለያ ይፍጠሩ', 'ውል', 'ክፍያ']
+
+function getCategoryInfo(category: string) {
+  if (category === '2000') return {
+    code: 'big_seller',
+    labelEn: 'Big Seller / Merchant',
+    labelAm: 'ትልቅ ነጋዴ',
+    penaltyEn: 'For any breach of this agreement, I acknowledge that my TRADE LICENSE shall be revoked and I will be prohibited from engaging in any commercial activities within the jurisdiction of this Equb circle.',
+    penaltyAm: 'ይህን ስምምነት በማፍረሴ የንግድ ፍቃዴ እንደሚሰረዝ እና በዚህ እቁብ ክበብ ውስጥ ማንኛውንም የንግድ እንቅስቃሴ እንደማላደርግ እቀበላለሁ።',
+    licenseType: 'Trade License (የንግድ ፍቃድ)',
+  }
+  if (category === '1000') return {
+    code: 'transport_driver',
+    labelEn: 'Local Transport Driver',
+    labelAm: 'የአካባቢ ትራንስፖርት አሽከርካሪ',
+    penaltyEn: 'For any breach of this agreement, I acknowledge that my DRIVING LICENSE shall be immediately suspended and I will be prohibited from operating any transport vehicle within the routes governed by this Equb circle.',
+    penaltyAm: 'ይህን ስምምነት በማፍረሴ የመንጃ ፍቃዴ ወዲያውኑ እንደሚታገድ እና በዚህ እቁብ ክበብ ቁጥጥር ስር ማንኛውንም የትራንስፖርት ተሽከርካሪ እንደማላሽከረክር እቀበላለሁ።',
+    licenseType: 'Driving License (የመንጃ ፍቃድ)',
+  }
+  return {
+    code: 'gov_worker',
+    labelEn: 'Government Office Worker',
+    labelAm: 'የመንግስት ቢሮ ሰራተኛ',
+    penaltyEn: 'For any breach of this agreement, I acknowledge that my FULL MONTHLY SALARY shall be garnished and deducted by my employing government office until all outstanding obligations to this Equb circle are fully settled.',
+    penaltyAm: 'ይህን ስምምነት በማፍረሴ ሙሉ ወርሃዊ ደሞዜ ከመንግስት ደሞዝ እንደሚቆረጥ እና በዚህ እቁብ ክበብ ያለብኝን ዕዳ እስከምከፍል ድረስ ደሞዜ እንደሚታገድ እቀበላለሁ።',
+    licenseType: 'Government Salary (የመንግስት ደሞዝ)',
+  }
+}
 
 export function OnboardingWizardScreen() {
   const { navigate } = useNavigation()
@@ -53,6 +80,7 @@ export function OnboardingWizardScreen() {
   const [ussdStep, setUssdStep] = useState<'dial' | 'password' | 'processing' | 'success'>('dial')
   const [ussdPin, setUssdPin] = useState('')
   const [ussdError, setUssdError] = useState('')
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   const [formData, setFormData] = useState({
     faydaId: '',
@@ -61,8 +89,6 @@ export function OnboardingWizardScreen() {
     phone: '',
     password: '',
     confirmPassword: '',
-    idPhotoFront: '',
-    idPhotoBack: '',
     workAddress: '',
     category: '',
     dailySavings: '',
@@ -137,8 +163,17 @@ export function OnboardingWizardScreen() {
         }
         break
       case 2:
-        if (!formData.idPhotoFront) {
-          newErrors.idPhotoFront = lang === 'en' ? 'Take a photo of the front of your ID' : 'የመታወቂያዎን ፊት ለፊት ፎቶ ያንሱ'
+        if (!formData.fullName.trim()) {
+          newErrors.fullName = lang === 'en' ? 'Full name is required' : 'ሙሉ ስም ያስፈልጋል'
+        }
+        if (!formData.phone.trim() || formData.phone.length < 9) {
+          newErrors.phone = lang === 'en' ? 'Enter a valid phone number' : 'የሚሰራ ስልክ ቁጥር ያስገቡ'
+        }
+        if (!formData.password.trim() || formData.password.length < 6) {
+          newErrors.password = lang === 'en' ? 'Password must be at least 6 characters' : 'የይለፍ ቃል ቢያንስ 6 ቁምፊዎች መሆን አለበት'
+        }
+        if (formData.password !== formData.confirmPassword) {
+          newErrors.confirmPassword = lang === 'en' ? 'Passwords do not match' : 'የይለፍ ቃላቱ አይዛመዱም'
         }
         if (!formData.workAddress.trim()) {
           newErrors.workAddress = lang === 'en' ? 'Work address is required' : 'የስራ አድራሻ ያስፈልጋል'
@@ -201,6 +236,194 @@ export function OnboardingWizardScreen() {
 
   function handleCategorySelect(id: string) {
     updateField('category', id)
+  }
+
+  async function handleGeneratePDF() {
+    setPdfLoading(true)
+    const categoryInfo = getCategoryInfo(formData.category)
+    const selectedCat = CATEGORIES.find((c) => c.id === formData.category)
+    const today = new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
+    const regId = `EQ-${Date.now().toString(36).toUpperCase()}`
+    const randomSlot = Math.floor(Math.random() * 500) + 1
+    const signatureDate = new Date().toISOString().split('T')[0]
+    const docId = `EQUB-REG-${regId}`
+
+    const termsList = (lang === 'en' ? legalTerms.en : legalTerms.am)
+      .slice(0, -1)
+      .map((term, i) => `<p style="margin:2px 0;font-size:9pt;color:#333;line-height:1.5;"><span style="font-weight:700;">${i + 1}.</span> ${term}</p>`)
+      .join('')
+
+    const categorySpecificTerms = lang === 'en'
+      ? `<p style="margin:4px 0;font-size:9.5pt;color:#1a1a1a;line-height:1.5;"><strong>Member Classification:</strong> Based on your selected savings tier of <strong>${selectedCat?.label || formData.category}</strong>, you are classified as a <strong>${categoryInfo.labelEn}</strong>.</p>
+         <p style="margin:4px 0;font-size:9.5pt;color:#991b1b;line-height:1.5;"><strong>Default Penalty:</strong> ${categoryInfo.penaltyEn}</p>`
+      : `<p style="margin:4px 0;font-size:9.5pt;color:#1a1a1a;line-height:1.5;"><strong>የአባል ምደባ፡</strong> በመረጡት የቁጠባ ደረጃ <strong>${selectedCat?.label || formData.category}</strong> መሰረት፣ እንደ <strong>${categoryInfo.labelAm}</strong> ተመድበዋል።</p>
+         <p style="margin:4px 0;font-size:9.5pt;color:#991b1b;line-height:1.5;"><strong>የውል ማፍረስ ቅጣት፡</strong> ${categoryInfo.penaltyAm}</p>`
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Times New Roman', Georgia, serif;
+    color: #1a1a1a;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    font-size: 11pt;
+  }
+  .header {
+    text-align: center;
+    border-bottom: 3px double #0d6b3e;
+    padding-bottom: 12px;
+    margin-bottom: 6px;
+    position: relative;
+  }
+  .logo { font-size: 28pt; font-weight: 900; color: #0d6b3e; letter-spacing: 4px; line-height: 1; }
+  .logo-sub { font-size: 7pt; color: #64748b; letter-spacing: 3px; text-transform: uppercase; margin-top: 2px; }
+  .confidential {
+    background: #fef2f2; border: 1.5px solid #fecaca; text-align: center;
+    font-size: 8pt; color: #991b1b; padding: 4px; letter-spacing: 2px; margin: 6px 0; font-weight: 700;
+  }
+  h1 { font-size: 16pt; color: #0d6b3e; text-align: center; margin: 8px 0 4px 0; font-weight: 700; }
+  h2 {
+    font-size: 12pt; color: #0d6b3e; border-bottom: 2px solid #0d6b3e;
+    padding-bottom: 3px; margin: 16px 0 8px 0; font-weight: 700;
+  }
+  .section { margin-bottom: 8px; }
+  .info-grid { width:100%; border-collapse: collapse; margin: 6px 0; }
+  .info-grid td { padding: 5px 8px; border: 1px solid #cbd5e1; font-size: 9.5pt; }
+  .info-grid .label { background: #f1f5f9; font-weight: 600; width: 140px; color: #475569; }
+  .info-grid .value { font-weight: 500; color: #1a1a1a; }
+  .terms-box { border: 1px solid #cbd5e1; padding: 8px 10px; margin: 6px 0; border-radius: 4px; background: #fafafa; }
+  .declaration { border: 1.5px solid #0d6b3e; padding: 10px; margin: 10px 0; background: #f0fdf4; text-align: center; font-size: 10pt; font-style: italic; }
+  .sig-table { width:100%; margin-top: 10px; }
+  .sig-table td { padding: 8px; vertical-align: top; }
+  .sig-line { border-top: 1px solid #1a1a1a; margin-top: 30px; padding-top: 4px; font-size: 9pt; color: #475569; }
+  .footer { margin-top: 14px; border-top: 1px solid #cbd5e1; padding-top: 6px; text-align: center; font-size: 7pt; color: #94a3b8; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 3px;
+    font-size: 8pt; font-weight: 700; color: #fff;
+  }
+  .badge-primary { background: #0d6b3e; }
+  .badge-amber { background: #d97706; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">GOJO EQUIB</div>
+    <div class="logo-sub">Digital Equb Savings Platform &bull; ዲጂታል የእቁብ ቁጠባ መድረክ</div>
+  </div>
+
+  <div class="confidential">CONFIDENTIAL &bull; MEMBER REGISTRATION AGREEMENT &bull; ሚስጥራዊ &bull; የአባል ምዝገባ ስምምነት</div>
+
+  <p style="text-align:center;font-size:9pt;color:#475569;margin:4px 0;">
+    Document ID: ${docId} &nbsp;|&nbsp; Date: ${today}
+  </p>
+
+  <h1>Equb Savings Membership Agreement</h1>
+  <p style="text-align:center;font-size:9pt;color:#64748b;margin:0 0 8px 0;">
+    የእቁብ ቁጠባ የአባልነት ስምምነት
+  </p>
+
+  <div class="section">
+    <h2>1. Member Information &bull; የአባል መረጃ</h2>
+    <table class="info-grid">
+      <tr><td class="label">Full Name / ሙሉ ስም</td><td class="value">${formData.fullName}</td></tr>
+      <tr><td class="label">Phone / ስልክ</td><td class="value">${formData.phone}</td></tr>
+      <tr><td class="label">Fayda ID / የፋይዳ መለያ</td><td class="value">${formData.faydaId}</td></tr>
+      <tr><td class="label">Work Address / የስራ አድራሻ</td><td class="value">${formData.workAddress}</td></tr>
+      <tr><td class="label">Registration ID / የምዝገባ መለያ</td><td class="value">${regId}</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>2. Savings Plan &bull; የቁጠባ እቅድ</h2>
+    <table class="info-grid">
+      <tr><td class="label">Category / ምድብ</td><td class="value">${selectedCat?.label || formData.category}</td></tr>
+      <tr><td class="label">Daily Amount / ዕለታዊ መጠን</td><td class="value">${selectedCat?.daily || '-'}</td></tr>
+      <tr><td class="label">Slot Number / ቦታ ቁጥር</td><td class="value">${randomSlot}</td></tr>
+      <tr><td class="label">Member Type / የአባል አይነት</td><td class="value">${categoryInfo.labelEn} / ${categoryInfo.labelAm}</td></tr>
+      <tr><td class="label">Classification / ምደባ</td><td class="value"><span class="badge badge-amber">${categoryInfo.licenseType}</span></td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>3. Terms & Conditions &bull; ውሎች እና ሁኔታዎች</h2>
+    <div class="terms-box">
+      ${termsList}
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>4. Member Classification & Penalty &bull; የአባል ምደባ እና ቅጣት</h2>
+    <div class="terms-box" style="background:#fef2f2;border-color:#fecaca;">
+      ${categorySpecificTerms}
+    </div>
+  </div>
+
+  <div class="declaration">
+    <p style="font-size:10pt;font-weight:700;margin:0 0 4px 0;">DECLARATION &bull; ማረጋገጫ</p>
+    <p style="font-size:9pt;margin:0;line-height:1.6;">
+      I, <strong>${formData.fullName}</strong>, hereby confirm that all information provided above is true and correct.
+      I have read, understood, and agreed to all terms, conditions, and penalty clauses applicable to my membership
+      classification as a <strong>${categoryInfo.labelEn}</strong>.
+    </p>
+    <p style="font-size:9pt;margin:4px 0 0 0;line-height:1.6;font-style:normal;">
+      እኔ <strong>${formData.fullName}</strong>፣ ከላይ የቀረበው መረጃ እውነት እና ትክክል መሆኑን አረጋግጣለሁ።
+      እንደ <strong>${categoryInfo.labelAm}</strong> የአባልነት ምደባዬን የሚመለከቱ ሁሉንም ውሎች፣ ሁኔታዎች እና የቅጣት አንቀጾች አንብቤ፣ ተረድቼ እና ተስማምቼያለሁ።
+    </p>
+  </div>
+
+  <table class="sig-table">
+    <tr>
+      <td style="width:33%;">
+        <div class="sig-line">Member Signature / የአባል ፊርማ</div>
+        <p style="font-size:9pt;color:#475569;margin:4px 0;">${signatureData ? '✓ Signed digitally' : '_____________'}</p>
+        <p style="font-size:8pt;color:#64748b;">Date / ቀን: ${signatureDate}</p>
+      </td>
+      <td style="width:33%;text-align:center;">
+        <div style="margin-top:30px;padding-top:4px;">
+          <p style="font-size:8pt;color:#475569;margin:0;font-weight:700;">SEAL / ማህተም</p>
+          <div style="width:60px;height:60px;border:2px solid #0d6b3e;border-radius:50%;margin:6px auto;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:7pt;color:#0d6b3e;font-weight:700;">GOJO<br>EQUIB</span>
+          </div>
+        </div>
+      </td>
+      <td style="width:33%;text-align:right;">
+        <div class="sig-line">Witness / ምስክር</div>
+        <p style="font-size:9pt;color:#475569;margin:4px 0;">Name / ስም: _____________</p>
+        <p style="font-size:8pt;color:#64748b;">Date / ቀን: ${signatureDate}</p>
+      </td>
+    </tr>
+  </table>
+
+  <div class="footer">
+    <p style="margin:0;">${docId} &bull; Generated on ${today} &bull; Gojo Equb Platform</p>
+    <p style="margin:0;">&copy; ${new Date().getFullYear()} Zoe Automotive PLC. All rights reserved.</p>
+    <p style="margin:0;">Regulated Under Digital Joint Syndicate Division &bull; በዲጂታል የጋራ መቅረም ክፍል ተቋቋም</p>
+  </div>
+</body>
+</html>`
+
+    try {
+      const { base64: rawBase64 } = await Print.printToFileAsync({ html, base64: true })
+      const b64 = typeof rawBase64 === 'string' && rawBase64.includes('base64,')
+        ? rawBase64.split('base64,')[1] || rawBase64
+        : rawBase64
+      await Sharing.shareAsync(`data:application/pdf;base64,${b64}`, {
+        mimeType: 'application/pdf',
+        dialogTitle: lang === 'en' ? 'Save Registration Agreement' : 'የምዝገባ ስምምነት ያስቀምጡ',
+      })
+      showToast(lang === 'en' ? 'Agreement PDF downloaded' : 'የስምምነት PDF ተወርዷል', 'success')
+    } catch {
+      showToast(lang === 'en' ? 'Failed to generate PDF' : 'PDF ማመንጨት አልተሳካም', 'error')
+    } finally {
+      setPdfLoading(false)
+    }
   }
 
   function handlePayNow() {
@@ -273,14 +496,14 @@ export function OnboardingWizardScreen() {
     )
   }
 
-  const stepIcons = ['home-outline', 'finger-print-outline', 'camera-outline', 'document-text-outline', 'checkmark-circle-outline']
+  const stepIcons = ['home-outline', 'id-card-outline', 'person-outline', 'document-text-outline', 'checkmark-circle-outline']
 
   return (
     <View style={styles.root}>
       {renderHeader(
         stepIcons[step],
-        [onboarding.welcome, onboarding.faydaTitle, onboarding.documents, onboarding.agreement, onboarding.success][step],
-        [onboarding.welcomeSub, onboarding.faydaSub, onboarding.documentsSub, onboarding.agreementSub, onboarding.successSub][step]
+        [onboarding.welcome, onboarding.faydaTitle, onboarding.accountTitle, onboarding.agreement, onboarding.success][step],
+        [onboarding.welcomeSub, onboarding.faydaSub, onboarding.accountSub, onboarding.agreementSub, onboarding.successSub][step]
       )}
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.formContainer}>
@@ -333,7 +556,7 @@ export function OnboardingWizardScreen() {
                       error={errors.faydaId}
                       keyboardType="number-pad"
                       maxLength={12}
-                      leftIcon={<Ionicons name="finger-print-outline" size={18} color={colors.mutedForeground} />}
+                      leftIcon={<Ionicons name="id-card-outline" size={18} color={colors.mutedForeground} />}
                     />
 
                     <Button
@@ -373,45 +596,44 @@ export function OnboardingWizardScreen() {
                   </View>
                 )}
 
-                {/* Step 2: Documents & Photos */}
+                {/* Step 2: Account + Category */}
                 {step === 2 && (
                   <View style={styles.stepContent}>
-                    <Text style={styles.fieldLabel}>{onboarding.idFrontLabel}</Text>
-                    {formData.idPhotoFront ? (
-                      <>
-                        <Image source={{ uri: formData.idPhotoFront }} style={styles.docPreview} />
-                        <TouchableOpacity style={styles.retakeRow} onPress={() => updateField('idPhotoFront', '')}>
-                          <Ionicons name="camera-reverse-outline" size={18} color={colors.primary} />
-                          <Text style={styles.retakeText}>{lang === 'en' ? 'Retake' : 'እንደገና አንሳ'}</Text>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <CameraCapture
-                        label=""
-                        onCapture={(uri) => updateField('idPhotoFront', uri)}
-                      />
-                    )}
-
-                    {formData.idPhotoFront ? (
-                      <View style={styles.fieldMargin}>
-                        <Text style={styles.fieldLabel}>{onboarding.idBackLabel}</Text>
-                        {formData.idPhotoBack ? (
-                          <>
-                            <Image source={{ uri: formData.idPhotoBack }} style={styles.docPreview} />
-                            <TouchableOpacity style={styles.retakeRow} onPress={() => updateField('idPhotoBack', '')}>
-                              <Ionicons name="camera-reverse-outline" size={18} color={colors.primary} />
-                              <Text style={styles.retakeText}>{lang === 'en' ? 'Retake' : 'እንደገና አንሳ'}</Text>
-                            </TouchableOpacity>
-                          </>
-                        ) : (
-                          <CameraCapture
-                            label=""
-                            onCapture={(uri) => updateField('idPhotoBack', uri)}
-                          />
-                        )}
-                      </View>
-                    ) : null}
-
+                    <Input
+                      label={onboarding.nameLabel}
+                      placeholder={onboarding.namePlaceholder}
+                      value={formData.fullName}
+                      onChangeText={(val) => updateField('fullName', val)}
+                      error={errors.fullName}
+                      leftIcon={<Ionicons name="person-outline" size={18} color={colors.mutedForeground} />}
+                    />
+                    <Input
+                      label={onboarding.phoneLabel}
+                      placeholder="+251 9XX XXX XXXX"
+                      value={formData.phone}
+                      onChangeText={(val) => updateField('phone', val.replace(/[^0-9+]/g, ''))}
+                      error={errors.phone}
+                      keyboardType="phone-pad"
+                      leftIcon={<Ionicons name="call-outline" size={18} color={colors.mutedForeground} />}
+                    />
+                    <Input
+                      label={onboarding.passwordLabel}
+                      placeholder={onboarding.passwordPlaceholder}
+                      value={formData.password}
+                      onChangeText={(val) => updateField('password', val)}
+                      error={errors.password}
+                      secureTextEntry
+                      leftIcon={<Ionicons name="lock-closed-outline" size={18} color={colors.mutedForeground} />}
+                    />
+                    <Input
+                      label={onboarding.confirmLabel}
+                      placeholder={onboarding.confirmPlaceholder}
+                      value={formData.confirmPassword}
+                      onChangeText={(val) => updateField('confirmPassword', val)}
+                      error={errors.confirmPassword}
+                      secureTextEntry
+                      leftIcon={<Ionicons name="lock-open-outline" size={18} color={colors.mutedForeground} />}
+                    />
                     <Input
                       label={onboarding.workLabel}
                       placeholder={onboarding.workPlaceholder}
@@ -432,7 +654,7 @@ export function OnboardingWizardScreen() {
                         >
                           <View style={[styles.categoryDot, { backgroundColor: cat.color }]} />
                           <Text style={[styles.categoryName, formData.category === cat.id && { color: cat.color }]}>{cat.label}</Text>
-                          <Text style={styles.categoryDaily}>{cat.daily}</Text>
+                          <Text style={styles.categoryDaily}>{cat.daily} / {cat.target}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -452,7 +674,7 @@ export function OnboardingWizardScreen() {
                     <View style={styles.phoneInfo}>
                       <Ionicons name="information-circle" size={18} color={colors.primary} />
                       <Text style={styles.phoneInfoText}>
-                        {lang === 'en' ? 'Registered phone: +251 90 000 0000' : 'የተመዘገበ ስልክ፡ +251 90 000 0000'}
+                        {lang === 'en' ? `Registered phone: ${formData.phone || '+251 9XX XXX XXXX'}` : `የተመዘገበ ስልክ፡ ${formData.phone || '+251 9XX XXX XXXX'}`}
                       </Text>
                     </View>
 
@@ -519,7 +741,7 @@ export function OnboardingWizardScreen() {
                   </View>
                 )}
 
-                {/* Step 4: Success + Payment */}
+                {/* Step 4: Success + Payment + PDF */}
                 {step === 4 && (
                   <View style={styles.stepContent}>
                     <View style={styles.successIcon}>
@@ -553,7 +775,16 @@ export function OnboardingWizardScreen() {
 
                     <View style={styles.successActions}>
                       <Button title={onboarding.payNow} onPress={handlePayNow} fullWidth variant="primary" size="lg" />
-                      <Button title={onboarding.goDashboard} onPress={() => navigate('main')} fullWidth variant="outline" size="lg" style={styles.fieldMargin} />
+                      <Button
+                        title={pdfLoading ? (lang === 'en' ? 'Generating PDF...' : 'PDF በማመንጨት ላይ...') : (lang === 'en' ? 'Download Agreement PDF' : 'የስምምነት PDF አውርድ')}
+                        onPress={handleGeneratePDF}
+                        fullWidth
+                        variant="outline"
+                        size="lg"
+                        loading={pdfLoading}
+                        style={styles.fieldMargin}
+                      />
+                      <Button title={onboarding.goDashboard} onPress={() => navigate('main')} fullWidth variant="ghost" size="lg" style={styles.fieldMargin} />
                     </View>
                   </View>
                 )}
@@ -577,7 +808,7 @@ export function OnboardingWizardScreen() {
                 <Text style={styles.ussdCode}>*847#</Text>
                 <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing.lg }} />
                 <View style={{ height: 80 }} />
-                <Button title={lang === 'en' ? 'Proceed to PIN' : '� ወደ PIN ይቀጥሉ'} onPress={() => setUssdStep('password')} fullWidth variant="primary" />
+                <Button title={lang === 'en' ? 'Proceed to PIN' : 'ወደ PIN ይቀጥሉ'} onPress={() => setUssdStep('password')} fullWidth variant="primary" />
               </View>
             )}
 
@@ -626,8 +857,15 @@ export function OnboardingWizardScreen() {
                 <Text style={styles.ussdHint}>
                   {lang === 'en' ? `Your registration fee has been processed. Ref: ${regId}` : `የምዝገባ ክፍያዎ ተከናውኗል። ማጣቀሻ፡ ${regId}`}
                 </Text>
-                <Button title={lang === 'en' ? 'Download Receipt' : 'ደረሰኝ አውርድ'} onPress={() => showToast(lang === 'en' ? 'Receipt downloaded' : 'ደረሰኝ ተወርዷል', 'success')} fullWidth variant="primary" style={{ marginTop: spacing.xl }} />
-                <Button title={onboarding.goDashboard} onPress={() => { setShowUssd(false); navigate('main') }} fullWidth variant="outline" style={{ marginTop: spacing.sm }} />
+                <Button
+                  title={pdfLoading ? (lang === 'en' ? 'Generating...' : 'በማመንጨት ላይ...') : (lang === 'en' ? 'Download Agreement PDF' : 'የስምምነት PDF አውርድ')}
+                  onPress={handleGeneratePDF}
+                  fullWidth
+                  variant="primary"
+                  loading={pdfLoading}
+                  style={{ marginTop: spacing.xl }}
+                />
+                <Button title={onboarding.goDashboard} onPress={() => { setShowUssd(false); navigate('main') }} fullWidth variant="ghost" style={{ marginTop: spacing.sm }} />
               </View>
             )}
           </Card>
@@ -731,26 +969,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   errorText: { color: colors.destructive, fontSize: 13 },
-
-  /* Document preview */
-  fieldLabel: { fontSize: 14, fontWeight: '600', color: colors.foreground },
-  docPreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: colors.radius.md,
-    backgroundColor: '#f1f5f9',
-  },
-  retakeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-  },
-  retakeText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
 
   /* Continue button */
   continueBtn: {

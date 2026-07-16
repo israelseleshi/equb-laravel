@@ -11,11 +11,13 @@ use Carbon\Carbon;
 class AutoSpinCommand extends Command
 {
     protected $signature = 'equb:auto-spin';
-    protected $description = 'Run automatic daily spin for all active rounds at 11:00 AM EAT (08:00 UTC)';
+    protected $description = 'Run automatic draws for active rounds at 11:00 AM EAT based on frequency';
 
     public function handle(): int
     {
-        $this->info('[' . Carbon::now()->toDateTimeString() . '] Starting auto-spin...');
+        $now = Carbon::now();
+
+        $this->info('[' . $now->toDateTimeString() . '] Starting auto-spin...');
 
         $activeRounds = Round::where('status', 'active')
             ->where('auto_spin_enabled', true)
@@ -29,14 +31,47 @@ class AutoSpinCommand extends Command
         $results = [];
 
         foreach ($activeRounds as $round) {
+            if (!$this->isDue($round, $now)) {
+                $results[] = [
+                    'round_id' => $round->id,
+                    'success' => false,
+                    'message' => 'Skipped by frequency schedule',
+                ];
+                continue;
+            }
+
             $result = $this->spinRound($round);
             $results[] = $result;
+
+            if ($result['success']) {
+                $round->update(['last_auto_draw_at' => $now]);
+            }
+
             $this->info("  Round [{$round->id}] {$round->name}: {$result['message']}");
         }
 
-        $this->info('Auto-spin complete. Processed ' . $activeRounds->count() . ' round(s).');
+        $this->info('Auto-spin complete. Processed ' . count($results) . ' round(s).');
 
         return self::SUCCESS;
+    }
+
+    private function isDue(Round $round, Carbon $now): bool
+    {
+        $last = $round->last_auto_draw_at;
+
+        if (!$last) {
+            return true;
+        }
+
+        $last = Carbon::parse($last);
+
+        return match ($round->frequency) {
+            'daily' => $now->greaterThanOrEqualTo($last->copy()->addDay()),
+            'weekly' => $now->greaterThanOrEqualTo($last->copy()->addWeek()),
+            'monthly' => $now->greaterThanOrEqualTo($last->copy()->addMonth()),
+            '2_month' => $now->greaterThanOrEqualTo($last->copy()->addMonths(2)),
+            default => true,
+        };
     }
 
     private function spinRound(Round $round): array

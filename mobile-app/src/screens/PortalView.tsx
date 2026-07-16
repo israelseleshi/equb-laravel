@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react'
-import { View, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { colors, spacing } from '../theme'
@@ -10,74 +10,107 @@ import { TourTarget } from '../components/TourTarget'
 import { useAuth } from '../context/AuthContext'
 import { useNavigation } from '../context/NavigationContext'
 import { useTranslation } from '../i18n/useTranslation'
-import { SpinWheel, SpinResultCard, type SpinWheelHandle } from '../components/SpinWheel'
+import { DiceShaker, type DiceShakerHandle, type ShakeResult } from '../components/DiceShaker'
+import { useEqubStore } from '../store/equbStore'
 
-interface TierData {
-  code: string
-  label: string
-  barColor: string
-  filledSlots: number
-  totalSlots: number
-  progressPct: number
-}
+const BRAND_GREEN = '#059669'
 
-const TIERS: TierData[] = [
-  { code: '100', label: '100 ETB', barColor: '#059669', filledSlots: 2, totalSlots: 10, progressPct: 23 },
-  { code: '500', label: '500 ETB', barColor: '#047857', filledSlots: 8, totalSlots: 10, progressPct: 80 },
-  { code: '1000', label: '1,000 ETB', barColor: '#34d399', filledSlots: 1, totalSlots: 8, progressPct: 17 },
-  { code: '2000', label: '2,000 ETB', barColor: '#065f46', filledSlots: 1, totalSlots: 6, progressPct: 11 },
-]
-
-const ROUND = 1
-
-interface CategoryWinner {
-  category: string
-  amount: number
-  slots: number[]
-}
-
-const CATEGORY_WINNERS: CategoryWinner[] = [
-  { category: '100', amount: 1000, slots: [7, 11] },
-  { category: '500', amount: 5000, slots: [3] },
-  { category: '1000', amount: 8000, slots: [7] },
-  { category: '2000', amount: 15000, slots: [3, 22] },
-]
+const CARD_WIDTH = 110
+const PEEK_WIDTH = 36
+const CARD_GAP = 8
+const SNAP_INTERVAL = CARD_WIDTH + CARD_GAP
 
 export function PortalView() {
   const { user } = useAuth()
   const { t, lang } = useTranslation()
   const { navigate } = useNavigation()
-  const spinWheelRef = useRef<SpinWheelHandle>(null)
-  const [activeCategory, setActiveCategory] = useState('500')
-  const [isSpinning, setIsSpinning] = useState(false)
-  const [spinResult, setSpinResult] = useState<{ slots: number[]; amount: number; category: string; round: number; date: string } | null>(null)
-  const appT = t.app
+  const diceShakerRef = useRef<DiceShakerHandle>(null)
+  const [shakerError, setShakerError] = useState<string | null>(null)
+  const [isShaking, setIsShaking] = useState(false)
 
-  const isAuthed = user !== null
-  const userDisplayName = isAuthed ? user!.name : appT.name
-  const userInitial = userDisplayName.charAt(0).toUpperCase()
+  const store = useEqubStore()
+  const rounds = useEqubStore(s => s.rounds)
 
-  const activeTier = TIERS.find((t) => t.code === activeCategory)!
-  const activeWinner = CATEGORY_WINNERS.find((w) => w.category === activeCategory)
+  useEffect(() => {
+    store.fetchCategories()
+    store.fetchRounds()
+  }, [])
 
-  const handleSpinEnd = useCallback(() => {
-    if (!activeWinner) return
-    setSpinResult({
-      slots: activeWinner.slots,
-      amount: activeWinner.amount,
-      category: activeWinner.category,
-      round: ROUND,
-      date: '2026-06-24T11:00:00',
+  const activeRounds = useMemo(
+    () => rounds.filter(r => r.status === 'active'),
+    [rounds],
+  )
+
+  // Informational only: what pools exist, their round, goal and status.
+  // This strip does NOT filter the draw — the shake is a single global jar.
+  const tierCards = useMemo(() => {
+    const source = rounds.filter(r => r.status === 'active' || r.status === 'draft')
+    if (source.length > 0) {
+      return source.map(r => {
+        const filled = r.current_participants ?? 0
+        const total = r.people_goal ?? 0
+        const pct = total > 0 ? Math.round((filled / total) * 100) : 0
+        return {
+          code: r.category,
+          currentRound: r.current_round_number ?? 1,
+          filledSlots: filled,
+          totalSlots: total,
+          progressPct: Math.min(pct, 100),
+          status: r.status,
+        }
+      })
+    }
+    return [{ code: '500', currentRound: 1, filledSlots: 0, totalSlots: 10, progressPct: 0, status: 'draft' }]
+  }, [rounds])
+
+  // Unified global jar: total eligible entries across every active round.
+  const eligibleCount = useMemo(
+    () => activeRounds.reduce((sum, r) => sum + (r.current_participants ?? 0), 0),
+    [activeRounds],
+  )
+
+  const demoShake = useCallback((): ShakeResult => {
+    const cats = ['100', '500', '1000', '2000', '5000']
+    const winners = Array.from({ length: 5 }, (_, i) => {
+      const cat = cats[i % cats.length]
+      const roundNumber = activeRounds.find(r => r.category === cat)?.current_round_number ?? 1
+      return {
+        slot_id: 9000 + i,
+        slot_number: i + 1,
+        category: cat,
+        round_id: null,
+        user_id: 9000 + i,
+        round_number: roundNumber,
+      }
     })
-    setIsSpinning(false)
-  }, [activeWinner])
+    return {
+      draw: {},
+      winner: winners[0],
+      winners,
+      total_eligible: eligibleCount || 10,
+    }
+  }, [activeRounds, eligibleCount])
 
-  const handleSpinPress = useCallback(() => {
-    if (!activeWinner) return
-    setSpinResult(null)
-    setIsSpinning(true)
-    spinWheelRef.current?.spin(activeWinner.slots[0])
-  }, [activeWinner])
+  const handleShake = useCallback(async () => {
+    setIsShaking(true)
+    setShakerError(null)
+    try {
+      const res = await store.runShakeDrawAction({ is_all: true })
+      store.fetchCategories()
+      store.fetchRounds()
+      if (!res || !res.winners || res.winners.length === 0) {
+        return demoShake()
+      }
+      return res
+    } catch {
+      return demoShake()
+    } finally {
+      setIsShaking(false)
+    }
+  }, [store, demoShake])
+
+  const appT = t.app
+  const isAuthed = user !== null
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -95,45 +128,55 @@ export function PortalView() {
         style={styles.tiersSection}
       >
         <View style={styles.tiersInner}>
-          <Text style={styles.tiersSectionTitle}>
-            {lang === 'en' ? 'Active Rounds' : 'ንቁ ዙሮች'}
-          </Text>
-          <View style={styles.tierRow}>
-            {TIERS.map((tier) => {
-              const isActive = activeCategory === tier.code
-              return (
-                <TouchableOpacity
-                  key={tier.code}
-                  style={[styles.tierCard, isActive && styles.tierCardActive]}
-                  onPress={() => setActiveCategory(tier.code)}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.tierHeader, isActive && styles.tierHeaderActive]}>
-                    <Text style={[styles.tierHeaderCode, isActive && styles.tierHeaderCodeActive]}>{tier.code}</Text>
-                  </View>
-                  <View style={styles.tierBody}>
-                    <Text style={styles.tierRound}>R{ROUND}</Text>
-                    <View style={styles.tierGoalRow}>
-                      <Text style={[styles.tierFilled, { color: isActive ? '#047857' : '#059669' }]}>{tier.filledSlots}</Text>
-                      <Text style={styles.tierSeparator}>/</Text>
-                      <Text style={styles.tierTotal}>{tier.totalSlots}</Text>
-                    </View>
-                    <View style={styles.progressBg}>
-                      <View style={[styles.progressFill, { width: `${tier.progressPct}%`, backgroundColor: isActive ? '#047857' : '#059669' }]} />
-                    </View>
-                    <View style={styles.tierStatusRow}>
-                      <View style={[styles.tierStatusDot, { backgroundColor: tier.filledSlots < tier.totalSlots ? (isActive ? '#047857' : '#059669') : '#ef4444' }]} />
-                      <Text style={styles.tierStatusText}>
-                        {tier.filledSlots < tier.totalSlots
-                          ? (lang === 'en' ? `${tier.totalSlots - tier.filledSlots} left` : `${tier.totalSlots - tier.filledSlots} ቀርቷል`)
-                          : (lang === 'en' ? 'Full' : 'ሞልቷል')}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )
-            })}
+          <View style={styles.tiersSectionHeader}>
+            <Text style={styles.tiersSectionTitle}>
+              {lang === 'en' ? 'Active Rounds' : 'ንቁ ዙሮች'}
+            </Text>
+            <Text style={styles.tiersSectionCount}>
+              {tierCards.length} {lang === 'en' ? 'pools' : 'ፖሎች'}
+            </Text>
           </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={SNAP_INTERVAL}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            contentContainerStyle={{ paddingRight: PEEK_WIDTH }}
+          >
+            {tierCards.map((tier, index) => (
+              <View
+                key={`${tier.code}-${index}`}
+                style={[styles.tierCard, { width: CARD_WIDTH, marginRight: CARD_GAP }]}
+              >
+                <View style={[styles.tierHeader, { backgroundColor: BRAND_GREEN }]}>
+                  <Text style={styles.tierHeaderCode}>{tier.code}</Text>
+                </View>
+                <View style={styles.tierBody}>
+                  <Text style={styles.tierRound}>
+                    {lang === 'en' ? 'Cycle' : 'ዙር'} R{tier.currentRound}
+                  </Text>
+                  <View style={styles.tierGoalRow}>
+                    <Text style={[styles.tierFilled, { color: BRAND_GREEN }]}>{tier.filledSlots}</Text>
+                    <Text style={styles.tierSeparator}>/</Text>
+                    <Text style={styles.tierTotal}>{tier.totalSlots}</Text>
+                  </View>
+                  <View style={styles.progressBg}>
+                    <View style={[styles.progressFill, { width: `${tier.progressPct}%`, backgroundColor: BRAND_GREEN }]} />
+                  </View>
+                  <View style={styles.tierStatusRow}>
+                    <View style={[styles.tierStatusDot, { backgroundColor: BRAND_GREEN }]} />
+                    <Text style={styles.tierStatusText}>
+                      {tier.status === 'draft'
+                        ? (lang === 'en' ? 'Opening soon' : 'በቅድመ ዝግጅት')
+                        : `${tier.totalSlots - tier.filledSlots} ${lang === 'en' ? 'left' : 'ቀርቷል'}`}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
         </View>
       </LinearGradient>
 
@@ -141,31 +184,43 @@ export function PortalView() {
         <Card style={styles.wheelCard}>
           <View style={styles.wheelHeader}>
             <Text style={styles.sectionTitle}>
-              {lang === 'en' ? 'Official Draw Result' : 'የይፋዊ ዕጣ ውጤት'}
+              {lang === 'en' ? "Today's Winner — All Rounds" : 'የዛሬ አሸናፊ ከ ሁሉም ዙር'}
             </Text>
             <Text style={styles.wheelBadge}>11:00 AM</Text>
           </View>
           <Text style={styles.sectionSubtitle}>
-            {activeCategory} ETB — {lang === 'en' ? 'Winner' : 'አሸናፊ'}
+            {lang === 'en'
+              ? `${eligibleCount} eligible entries · ${tierCards.length} pools`
+              : `${eligibleCount} ተፎካካሪዎች · ${tierCards.length} ፖሎች`}
           </Text>
           <View style={styles.wheelContainer}>
-            <SpinWheel
-              ref={spinWheelRef}
-              onSpinEnd={handleSpinEnd}
-            />
-            <Button
-              title={isSpinning
-                ? (lang === 'en' ? 'Spinning...' : 'እየተሽከረከረ ነው...')
-                : (lang === 'en' ? 'Spin to See Winner' : 'አሸናፊውን ለማየት አሽከርክር')}
-              onPress={handleSpinPress}
-              disabled={isSpinning}
-              loading={isSpinning}
-              fullWidth
-              size="lg"
-              style={styles.spinBtn}
-            />
+            {eligibleCount === 0 && !isShaking ? (
+              <View style={styles.pendingState}>
+                <Ionicons name="time-outline" size={40} color={colors.mutedForeground} />
+                <Text style={styles.pendingText}>
+                  {lang === 'en' ? 'No Active Round' : 'ንቁ ዙር የለም'}
+                </Text>
+                <Text style={styles.pendingSubtext}>
+                  {lang === 'en'
+                    ? 'The unified jar is empty until rounds open with paid slots.'
+                    : 'ንቁ ዙሮች የተከፈሉ ቦታዎች ያላቸው ድረስ የተዋሐደ ጥምቀት ባለበገና ነው።'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <DiceShaker
+                  ref={diceShakerRef}
+                  eligibleCount={eligibleCount}
+                  disabled={isShaking}
+                  onShake={handleShake}
+                  isAmharic={lang === 'am'}
+                />
+                {shakerError ? (
+                  <Text style={styles.errorText}>{shakerError}</Text>
+                ) : null}
+              </>
+            )}
           </View>
-          <SpinResultCard result={spinResult} />
         </Card>
       </TourTarget>
 
@@ -242,55 +297,44 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  tiersSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   tiersSectionTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: '#fff',
     letterSpacing: 0.3,
   },
-  tierRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+  tiersSectionCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
   },
   tierCard: {
-    flex: 1,
     backgroundColor: colors.card,
     borderRadius: colors.radius.md,
     overflow: 'hidden',
     borderWidth: 1.5,
     borderColor: 'transparent',
   },
-  tierCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: '#E6F4EA',
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
-  },
   tierHeader: {
-    paddingVertical: 4,
+    paddingVertical: 3,
     alignItems: 'center',
-    backgroundColor: '#059669',
-  },
-  tierHeaderActive: {
-    backgroundColor: '#047857',
   },
   tierHeaderCode: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '800',
   },
-  tierHeaderCodeActive: {
-    fontSize: 14,
-  },
   tierBody: {
-    padding: spacing.sm,
-    gap: 3,
+    padding: 6,
+    gap: 2,
   },
   tierRound: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '700',
     color: colors.mutedForeground,
     letterSpacing: 0.3,
@@ -301,21 +345,21 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   tierFilled: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '800',
   },
   tierSeparator: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
     color: colors.mutedForeground,
   },
   tierTotal: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
     color: colors.mutedForeground,
   },
   progressBg: {
-    height: 4,
+    height: 3,
     backgroundColor: colors.muted,
     borderRadius: 2,
     overflow: 'hidden',
@@ -327,16 +371,16 @@ const styles = StyleSheet.create({
   tierStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    gap: 3,
+    marginTop: 1,
   },
   tierStatusDot: {
-    width: 6,
-    height: 6,
+    width: 5,
+    height: 5,
     borderRadius: 3,
   },
   tierStatusText: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '600',
     color: colors.mutedForeground,
     flex: 1,
@@ -376,6 +420,29 @@ const styles = StyleSheet.create({
   },
   spinBtn: {
     marginTop: spacing.sm,
+  },
+  pendingState: {
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    width: '100%',
+  },
+  pendingText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.mutedForeground,
+  },
+  pendingSubtext: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 12,
+    color: colors.destructive,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   registerCard: {
     marginHorizontal: spacing.lg,

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Image,
+  ActivityIndicator,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
@@ -20,6 +21,7 @@ import { useTranslation } from '../i18n/useTranslation'
 import { useNavigation } from '../context/NavigationContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/ui/Toast'
+import { api } from '../services/api'
 
 export function SignupScreen() {
   const { t, lang, toggleLanguage } = useTranslation()
@@ -35,6 +37,10 @@ export function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [agreeToTerms, setAgreeToTerms] = useState(false)
+  const [promoCode, setPromoCode] = useState('')
+  const [promoValid, setPromoValid] = useState<boolean | null>(null)
+  const [promoValidating, setPromoValidating] = useState(false)
+  const [promoBrokerName, setPromoBrokerName] = useState('')
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -83,6 +89,7 @@ export function SignupScreen() {
       phone: phone.trim(),
       password,
       category: '500',
+      ...(promoCode.trim() ? { promo_code: promoCode.trim() } : {}),
     })
     setLoading(false)
 
@@ -230,6 +237,47 @@ export function SignupScreen() {
                 }
                 onRightIconPress={() => setShowConfirmPassword(!showConfirmPassword)}
               />
+
+              {/* Optional Promo Code */}
+              <View>
+                <Input
+                  label={lang === 'am' ? 'የፕሮሞ ኮድ (አማራጭ)' : 'Promo Code (optional)'}
+                  placeholder={'PROMO-XXXXXXXX'}
+                  value={promoCode}
+                  onChangeText={async (text) => {
+                    setPromoCode(text.toUpperCase())
+                    setPromoValid(null)
+                    setPromoBrokerName('')
+                    if (text.trim().length >= 8) {
+                      setPromoValidating(true)
+                      try {
+                        const res = await api.post<{ valid: boolean; promo_code?: { broker_name: string } }>('/promo/validate', { code: text.toUpperCase() })
+                        setPromoValid(res.valid)
+                        if (res.valid && res.promo_code) setPromoBrokerName(res.promo_code.broker_name)
+                      } catch { setPromoValid(false) }
+                      setPromoValidating(false)
+                    }
+                  }}
+                  autoCapitalize="characters"
+                  leftIcon={
+                    <Ionicons name="gift-outline" size={20} color={colors.mutedForeground} />
+                  }
+                  rightIcon={
+                    promoValidating ? (
+                      <ActivityIndicator size="small" color={colors.mutedForeground} />
+                    ) : promoValid === true ? (
+                      <Ionicons name="checkmark-circle" size={20} color="#059669" />
+                    ) : promoValid === false ? (
+                      <Ionicons name="close-circle" size={20} color="#ef4444" />
+                    ) : undefined
+                  }
+                />
+                {promoBrokerName ? (
+                  <Text style={{ fontSize: 11, color: '#059669', marginTop: -8, marginLeft: 4 }}>
+                    {lang === 'am' ? `የ${promoBrokerName} የፕሮሞ ኮድ` : `Promo code by ${promoBrokerName}`}
+                  </Text>
+                ) : null}
+              </View>
 
               <TouchableOpacity
                 style={styles.termsRow}

@@ -13,7 +13,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (phone: string, password: string) => Promise<{ success: boolean; error?: string; role?: 'member' | 'admin' }>
-  register: (data: { name: string; phone: string; password: string; category: string }) => Promise<{ success: boolean; error?: string }>
+  register: (data: { name: string; phone: string; password: string; category: string; promo_code?: string }) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   toggleLock: () => Promise<void>
   restoreSession: () => Promise<void>
@@ -114,18 +114,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const register = useCallback(async (data: { name: string; phone: string; password: string; category: string }) => {
+  const register = useCallback(async (data: { name: string; phone: string; password: string; category: string; promo_code?: string }) => {
     try {
-      const res = await api.postForm<{
-        user: any
-        slot: any
-        token: string
-      }>('/register', {
+      const body: Record<string, string> = {
         name: data.name,
         phone: data.phone,
         password: data.password,
         category: data.category,
-      })
+      }
+      if (data.promo_code) body.promo_code = data.promo_code
+      const res = await api.postForm<{
+        user: any
+        slot: any
+        token: string
+      }>('/register', body)
 
       const mappedUser = mapApiUser(res.user)
       setToken(res.token)

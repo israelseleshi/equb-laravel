@@ -2,7 +2,8 @@
   "$schema": "https://opencode.ai/config.json",
   "skills": {
     "directories": [
-      ".opencode/skills"
+      ".opencode/skills",
+      "../ECC/skills"
     ],
     "autoLoad": [
       "expo-react-native-typescript",
@@ -17,7 +18,32 @@
       "laravel-security",
       "laravel-verification",
       "backend-patterns",
-      "database-migrations"
+      "database-migrations",
+      "expo",
+      "react-patterns",
+      "react-testing",
+      "react-performance",
+      "typescript-patterns",
+      "laravel-patterns",
+      "php-patterns",
+      "database-migrations",
+      "security-review",
+      "e2e-testing"
     ]
   },
+  "commands": {
+    "directories": [
+      "../ECC/commands"
+    ]
+  },
+  "agents": {
+    "directories": [
+      "../ECC/agents"
+    ]
+  },
+  "rules": {
+    "directories": [
+      "../ECC/rules"
+    ]
+  }
 }

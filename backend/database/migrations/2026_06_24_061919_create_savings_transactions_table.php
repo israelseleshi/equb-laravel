@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('savings_transactions', function (Blueprint $table) {
             $table->id();
+            $table->engine('InnoDB');
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('slot_id')->constrained()->cascadeOnDelete();
             $table->enum('type', ['deposit', 'withdrawal']);

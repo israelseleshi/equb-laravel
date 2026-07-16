@@ -26,12 +26,11 @@ import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen'
 import { OnboardingWizardScreen } from './src/screens/OnboardingWizardScreen'
 import { MainScreen } from './src/navigation/MainScreen'
 import { AuthGate } from './src/components/AuthGate'
-import { BiometricSetupScreen } from './src/screens/BiometricSetupScreen'
-import { BiometricGateScreen } from './src/screens/BiometricGateScreen'
+
 import { TourProvider } from './src/context/TourContext'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { colors, spacing } from './src/theme'
-import { getSettings } from './src/services/storage'
+
 import { Ionicons } from '@expo/vector-icons'
 import { Text } from './src/components/ui/AppText'
 import { useTranslation } from './src/i18n/useTranslation'
@@ -98,9 +97,7 @@ function ScreenRouter() {
     if (role === 'admin') {
       navigate('authGate')
     } else {
-      getSettings().then((s) => {
-        navigate(s.biometricEnabled ? 'biometricGate' : 'dashboard')
-      })
+      navigate('dashboard')
     }
   }, [role, currentScreen, navigate])
 
@@ -175,13 +172,8 @@ function ScreenRouter() {
         <AuthGate
           onSuccess={() => navigate('admin')}
           onCancel={() => navigate('landing')}
-          onEnrollBiometric={() => navigate('biometricSetup')}
         />
       )
-    case 'biometricSetup':
-      return <BiometricSetupScreen />
-    case 'biometricGate':
-      return <BiometricGateScreen />
     case 'main':
       return <MainScreen />
     default:

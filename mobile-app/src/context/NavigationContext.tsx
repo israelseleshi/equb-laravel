@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 
-export type Screen = 'landing' | 'portal' | 'login' | 'signup' | 'forgotPassword' | 'dashboard' | 'admin' | 'onboarding' | 'main' | 'authGate' | 'biometricSetup' | 'biometricGate'
+export type Screen = 'landing' | 'portal' | 'login' | 'signup' | 'forgotPassword' | 'dashboard' | 'admin' | 'onboarding' | 'main' | 'authGate'
 
 interface NavigationContextValue {
   currentScreen: Screen

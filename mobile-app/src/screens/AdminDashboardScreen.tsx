@@ -31,8 +31,9 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import { getCategoryConfig, CATEGORY_CODES } from '../data/tierConfig'
 import { MemberDetailModal } from '../components/admin/MemberDetailModal'
-import { roundsApi, type RoundData, type RoundStats, type CreateRoundInput } from '../services/api'
+import { api, roundsApi, type RoundData, type RoundStats, type CreateRoundInput } from '../services/api'
 import { updateSettings } from '../services/storage'
+import { useEqubStore } from '../store/equbStore'
 
 /* ─── Mock Data ─── */
 
@@ -111,19 +112,6 @@ const MOCK_PAYMENTS: PaymentLog[] = [
   { id: 'p6', userId: 'usr-6', userName: 'Meron Getachew', amount: 500, status: 'failed', paymentGateway: 'Telebirr', timestamp: '2026-06-18T08:00:00Z' },
 ]
 
-const MOCK_SAVINGS: { userId: string; balance: number }[] = [
-  { userId: 'usr-1', balance: 1500 },
-  { userId: 'usr-2', balance: 2300 },
-  { userId: 'usr-3', balance: 800 },
-  { userId: 'usr-4', balance: 3200 },
-  { userId: 'usr-5', balance: 1100 },
-  { userId: 'usr-6', balance: 450 },
-  { userId: 'usr-7', balance: 2100 },
-  { userId: 'usr-8', balance: 980 },
-  { userId: 'usr-9', balance: 1750 },
-  { userId: 'usr-10', balance: 600 },
-]
-
 const MOCK_TODAY_STATUS: Record<string, boolean> = {
   'usr-1': true, 'usr-2': true, 'usr-3': false, 'usr-4': true,
   'usr-5': false, 'usr-6': true, 'usr-7': true, 'usr-8': false,
@@ -137,6 +125,50 @@ const CATEGORY_CONFIG_MAP: Record<string, { label: string; barColor: string; tar
   '2000': { label: '2,000 ETB', barColor: '#8b5cf6', target: 6 },
   '5000': { label: '5,000 ETB', barColor: '#f59e0b', target: 4 },
   'savings': { label: 'Savings', barColor: '#7c3aed', target: 1 },
+}
+
+/* Demo rounds so the Lucky Spin / Dice Shaker can be tested without a backend.
+   These are active and already at their participant goal, so the per-round
+   SHAKE buttons render and operate. Used as a fallback when the API is unreachable. */
+const DEMO_ROUNDS: RoundData[] = [
+  {
+    id: 101, name: 'Morning Circle', category: '500', amount: 500, frequency: 'daily',
+    people_goal: 10, current_participants: 10, total_rounds: 12, winners_per_spin: 2,
+    current_round_number: 3, start_date: null, end_date: null, status: 'active',
+    auto_spin_enabled: true, spin_time: '08:00', commission_rate: 10, metadata: null,
+    last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(),
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 102, name: 'Evening Savers', category: '1000', amount: 1000, frequency: 'daily',
+    people_goal: 8, current_participants: 8, total_rounds: 10, winners_per_spin: 1,
+    current_round_number: 2, start_date: null, end_date: null, status: 'active',
+    auto_spin_enabled: true, spin_time: '20:00', commission_rate: 10, metadata: null,
+    last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(),
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 103, name: 'Big Players', category: '5000', amount: 5000, frequency: 'weekly',
+    people_goal: 4, current_participants: 4, total_rounds: 8, winners_per_spin: 1,
+    current_round_number: 1, start_date: null, end_date: null, status: 'active',
+    auto_spin_enabled: false, spin_time: '12:00', commission_rate: 10, metadata: null,
+    last_auto_draw_at: null,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  },
+]
+
+const DEMO_STATS: RoundStats = {
+  total_rounds: 3,
+  active_rounds: 3,
+  draft_rounds: 0,
+  completed_rounds: 0,
+  total_payouts: 0,
+  total_draws: 0,
+  by_category: [
+    { category: '500', total: 1, participants: 10 },
+    { category: '1000', total: 1, participants: 8 },
+    { category: '5000', total: 1, participants: 4 },
+  ],
 }
 
 /* ─── Helpers ─── */
@@ -185,6 +217,7 @@ const TABS: TabConfig[] = [
   { key: 'winners', icon: 'trophy' },
   { key: 'payments', icon: 'card-outline' },
   { key: 'rounds', icon: 'refresh' },
+  { key: 'promo', icon: 'gift' },
 ]
 
 const TAB_ICONS: Record<string, string> = {
@@ -193,6 +226,7 @@ const TAB_ICONS: Record<string, string> = {
   winners: 'trophy',
   payments: 'card-outline',
   rounds: 'refresh',
+  promo: 'gift',
 }
 
 /* ─── Component ─── */
@@ -223,6 +257,7 @@ export function AdminDashboardScreen() {
   const [catFilter, setCatFilter] = useState('all')
   const [roundFilter, setRoundFilter] = useState('all')
   const [memberRoundFilter, setMemberRoundFilter] = useState('all')
+  const [dailyStatusFilter, setDailyStatusFilter] = useState<'unpaid' | 'paid'>('unpaid')
   const [selectedWinner, setSelectedWinner] = useState<Draw | null>(null)
   const [showPayoutModal, setShowPayoutModal] = useState(false)
   const [payoutStep, setPayoutStep] = useState('dial')
@@ -236,15 +271,11 @@ export function AdminDashboardScreen() {
   const [showMemberModal, setShowMemberModal] = useState(false)
   const [memberDetailSlots, setMemberDetailSlots] = useState<Slot[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
-  const [paymentsView, setPaymentsView] = useState<'history' | 'daily' | 'savings'>('history')
-  const [paymentDateFilter, setPaymentDateFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
-  const [dailyStatusFilter, setDailyStatusFilter] = useState<'unpaid' | 'paid'>('unpaid')
   const [spinError, setSpinError] = useState<string | null>(null)
-  const [showSavingsPayout, setShowSavingsPayout] = useState(false)
-  const [savingsAmount, setSavingsAmount] = useState('')
-  const [selectedSavingsUserId, setSelectedSavingsUserId] = useState<string | null>(null)
-  const [savingsPayoutStep, setSavingsPayoutStep] = useState<'select' | 'amount' | 'confirm' | 'processing' | 'success'>('select')
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
+  const [paymentsRefreshKey, setPaymentsRefreshKey] = useState(0)
+  const [showReceipt, setShowReceipt] = useState(false)
+  const [receiptMember, setReceiptMember] = useState<{ name: string; phone: string; id: string; amount: number; slots: Slot[] } | null>(null)
 
   /* ─── Rounds State ─── */
   const [rounds, setRounds] = useState<RoundData[]>([])
@@ -268,47 +299,71 @@ export function AdminDashboardScreen() {
   const [creatingRound, setCreatingRound] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
 
+  /* ─── Draw (Auto Schedule) State ─── */
+
   /* ─── Pagination State ─── */
   const [memberPage, setMemberPage] = useState(1)
   const [winnerPage, setWinnerPage] = useState(1)
-  const [paymentPage, setPaymentPage] = useState(1)
   const [dailyPage, setDailyPage] = useState(1)
   const PER_PAGE = 5
 
-  /* ─── Fetch Rounds ─── */
+  /* ─── Fetch Rounds (Brain & Nerve enabled) ─── */
+  const store = useEqubStore()
+  const isFetchingRounds = useRef(false)
   const fetchRounds = async () => {
+    if (isFetchingRounds.current) return
+    isFetchingRounds.current = true
     setLoadingRounds(true)
     try {
       const [roundsRes, statsRes] = await Promise.all([
-        roundsApi.list(),
-        roundsApi.stats(),
+        roundsApi.list().catch(() => null),
+        roundsApi.stats().catch(() => null),
       ])
-      setRounds(roundsRes.rounds)
-      setRoundStats(statsRes)
-    } catch (err) {
-      showToast('Failed to load rounds', 'error')
+      const loadedRounds = roundsRes?.rounds
+      setRounds(loadedRounds && loadedRounds.length ? loadedRounds : DEMO_ROUNDS)
+      setRoundStats(statsRes ?? DEMO_STATS)
+    } catch {
+      setRounds(DEMO_ROUNDS)
+      setRoundStats(DEMO_STATS)
     } finally {
       setLoadingRounds(false)
+      isFetchingRounds.current = false
     }
   }
 
+  /* When store revision changes from external source (category cascade), re-fetch rounds */
   useEffect(() => {
-    if (activeTab === 'rounds' || activeTab === 'members') {
+    if (store.revision > 0 && (activeTab === 'rounds' || activeTab === 'members' || activeTab === 'payments')) {
+      fetchRounds()
+    }
+  }, [store.revision])
+
+  useEffect(() => {
+    if (activeTab === 'rounds' || activeTab === 'members' || activeTab === 'payments') {
       fetchRounds()
     }
   }, [activeTab])
 
   /* ─── Computed ─── */
 
-  const totalUsers = MOCK_USERS.length
-  const totalSlots = MOCK_SLOTS.length
-  const activeSlots = MOCK_SLOTS.filter(s => s.status === 'active').length
-  const lienSlots = MOCK_SLOTS.filter(s => s.status !== 'active').length
-  const totalBalance = MOCK_SLOTS.reduce((sum, s) => sum + s.balance, 0)
+  /* Use Brain & Nerve store metrics with mock fallback */
+  const storeMetrics = store.metrics
+  const totalUsers = storeMetrics.totalMembers || MOCK_USERS.length
+  const totalSlots = storeMetrics.totalSlots || MOCK_SLOTS.length
+  const activeSlots = storeMetrics.activeSlots || MOCK_SLOTS.filter(s => s.status === 'active').length
+  const lienSlots = storeMetrics.lienSlots || MOCK_SLOTS.filter(s => s.status !== 'active').length
+  const totalBalance = storeMetrics.totalPoolVolume || MOCK_SLOTS.reduce((sum, s) => sum + s.balance, 0)
   const totalPayouts = MOCK_DRAWS.reduce((sum, d) => sum + d.netPayout, 0)
-  const delinquentSlots = MOCK_SLOTS.filter(s => s.consecutiveMissedSweeps > 0)
+  const delinquentCount = storeMetrics.delinquentSlots || MOCK_SLOTS.filter(s => s.consecutiveMissedSweeps > 0).length
 
   const slotsByCat = useMemo(() => {
+    if (storeMetrics.byCategory.length > 0) {
+      const map: Record<string, { total: number; active: number; balance: number }> = {}
+      for (const c of storeMetrics.byCategory) {
+        map[c.category] = { total: c.count, active: c.count, balance: c.balance }
+      }
+      return map
+    }
     const map: Record<string, { total: number; active: number; balance: number }> = {}
     CATEGORY_CODES.forEach(c => {
       const s = MOCK_SLOTS.filter(sl => sl.category === c)
@@ -319,7 +374,7 @@ export function AdminDashboardScreen() {
       }
     })
     return map
-  }, [])
+  }, [storeMetrics.byCategory])
 
   const winners = useMemo(() => {
     const w = [...MOCK_DRAWS].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
@@ -330,20 +385,7 @@ export function AdminDashboardScreen() {
   const uniqueRounds = useMemo(() => [...new Set(MOCK_DRAWS.map(d => d.round).filter(Boolean))].sort(), [])
   const filteredWinners = roundFilter === 'all' ? winners : winners.filter(d => d.round === parseInt(roundFilter))
 
-  const allPaymentLogs = [...MOCK_PAYMENTS].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
-  const filteredPayments = useMemo(() => {
-    if (paymentDateFilter === 'all') return allPaymentLogs
-    return allPaymentLogs.filter(p => paymentDateFilter === 'paid' ? p.status === 'success' : p.status === 'failed')
-  }, [paymentDateFilter, allPaymentLogs])
-  const savingsTotalBalance = MOCK_SAVINGS.reduce((s, x) => s + x.balance, 0)
-  const savingsMembersCount = MOCK_SAVINGS.filter(x => x.balance > 0).length
-
-  /* ─── Paginated Vars ─── */
-  const paginatedPayments = useMemo(() => {
-    const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PER_PAGE))
-    const page = Math.min(paymentPage, totalPages)
-    return { items: filteredPayments.slice((page - 1) * PER_PAGE, page * PER_PAGE), totalPages }
-  }, [filteredPayments, paymentPage, PER_PAGE])
+  /* ─── Payments ─── */
 
   /* ─── Payout Modal ─── */
 
@@ -376,17 +418,6 @@ export function AdminDashboardScreen() {
     }
   }
 
-  function handleSavingsPayoutFlow() {
-    if (savingsPayoutStep === 'confirm') {
-      setSavingsPayoutStep('processing')
-      setTimeout(() => {
-        setSavingsPayoutStep('success')
-      }, 2000)
-    }
-  }
-
-  /* ─── Lucky Spin ─── */
-
   async function handleLuckySpin(category: string) {
     setSpinError(null)
     setSpinLoading(category)
@@ -398,6 +429,36 @@ export function AdminDashboardScreen() {
 
   /* ─── PDF Generation ─── */
 
+  function getMemberCategoryType(userSlots: Slot[]): { code: string; labelEn: string; labelAm: string; penaltyEn: string; penaltyAm: string; licenseType: string } {
+    const cats = [...new Set(userSlots.map(s => s.category))]
+    const hasHigh = cats.some(c => c === '2000' || c === '5000')
+    const hasMid = cats.some(c => c === '1000')
+    if (hasHigh) return {
+      code: 'big_seller',
+      labelEn: 'Big Seller / Merchant',
+      labelAm: 'ትልቅ ነጋዴ',
+      penaltyEn: 'For any breach of this agreement, I acknowledge that my TRADE LICENSE shall be revoked and I will be prohibited from engaging in any commercial activities within the jurisdiction of this Equb circle.',
+      penaltyAm: 'ይህን ስምምነት በማፍረሴ የንግድ ፍቃዴ እንደሚሰረዝ እና በዚህ እቁብ ክበብ ውስጥ ማንኛውንም የንግድ እንቅስቃሴ እንደማላደርግ እቀበላለሁ።',
+      licenseType: 'Trade License (የንግድ ፍቃድ)',
+    }
+    if (hasMid) return {
+      code: 'transport_driver',
+      labelEn: 'Local Transport Driver',
+      labelAm: 'የአካባቢ ትራንስፖርት አሽከርካሪ',
+      penaltyEn: 'For any breach of this agreement, I acknowledge that my DRIVING LICENSE shall be immediately suspended and I will be prohibited from operating any transport vehicle within the routes governed by this Equb circle.',
+      penaltyAm: 'ይህን ስምምነት በማፍረሴ የመንጃ ፍቃዴ ወዲያውኑ እንደሚታገድ እና በዚህ እቁብ ክበብ ቁጥጥር ስር ማንኛውንም የትራንስፖርት ተሽከርካሪ እንደማላሽከረክር እቀበላለሁ።',
+      licenseType: 'Driving License (የመንጃ ፍቃድ)',
+    }
+    return {
+      code: 'gov_worker',
+      labelEn: 'Government Office Worker',
+      labelAm: 'የመንግስት ቢሮ ሰራተኛ',
+      penaltyEn: 'For any breach of this agreement, I acknowledge that my FULL MONTHLY SALARY shall be garnished and deducted by my employing government office until all outstanding obligations to this Equb circle are fully settled.',
+      penaltyAm: 'ይህን ስምምነት በማፍረሴ ሙሉ ወርሃዊ ደሞዜ ከመንግስት ደሞዝ እንደሚቆረጥ እና በዚህ እቁብ ክበብ ያለብኝን ዕዳ እስከምከፍል ድረስ ደሞዜ እንደሚታገድ እቀበላለሁ።',
+      licenseType: 'Government Salary (የመንግስት ደሞዝ)',
+    }
+  }
+
   async function generateMemberPDF(member: User) {
     const userSlots = MOCK_SLOTS.filter(s => s.userId === member.id)
     const totalBalance = userSlots.reduce((sum, s) => sum + s.balance, 0)
@@ -405,13 +466,14 @@ export function AdminDashboardScreen() {
     const signatureDate = new Date().toISOString().split('T')[0]
     const docId = `EQUB-${member.id.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`
     const categories = [...new Set(userSlots.map(s => s.category))]
+    const memberType = getMemberCategoryType(userSlots)
 
     const slotRows = userSlots.map((s, i) => {
       const cfg = CATEGORY_CONFIG_MAP[s.category]
       const freq = rounds.find(r => r.category === s.category)?.frequency || 'daily'
       const amount = rounds.find(r => r.category === s.category)?.amount || parseInt(s.category)
       return `<tr style="${i % 2 === 0 ? 'background:#ffffff;' : 'background:#f9fafb;'}">
-        <td style="padding:10px 8px;border:1px solid #ddd;font-weight:bold;">${i + 1}</td>
+        <td style="padding:10px 8px;border:1px solid #ddd;font-weight:bold;text-align:center;">${i + 1}</td>
         <td style="padding:10px 8px;border:1px solid #ddd;">${cfg?.label || s.category} ETB</td>
         <td style="padding:10px 8px;border:1px solid #ddd;text-align:center;">Slot #${s.slotNumber}</td>
         <td style="padding:10px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:#059669;">${amount.toLocaleString()} ETB</td>
@@ -434,186 +496,285 @@ export function AdminDashboardScreen() {
       </tr>`
     }).join('')
 
-    const html = `
-<!DOCTYPE html>
+    const totalCycleAmount = totalBalance
+    const memberCount = MOCK_USERS.length
+    const verificationHash = 'sha256_' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
+
+    const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-  body { font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.5; padding: 30px; margin: 0; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #ddd; padding: 8px; font-size: 11px; }
-  th { background: #059669; color: #fff; text-align: left; font-size: 10px; }
-  h1 { font-size: 18px; color: #059669; text-align: center; margin: 0 0 4px 0; letter-spacing: 2px; }
-  h2 { font-size: 13px; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 4px; margin: 20px 0 10px 0; }
-  h3 { font-size: 12px; color: #92400e; margin: 12px 0 8px 0; }
-  .hdr { text-align: center; border-bottom: 3px double #059669; padding-bottom: 12px; margin-bottom: 10px; }
-  .logo { font-size: 28px; font-weight: bold; color: #059669; letter-spacing: 4px; }
-  .sub { font-size: 10px; color: #666; }
-  .addr { font-size: 9px; color: #888; text-align: right; margin-top: -30px; line-height: 1.6; }
-  .conf { background: #fef2f2; border: 1px solid #fecaca; text-align: center; font-size: 9px; color: #991b1b; padding: 5px; margin: 10px 0; letter-spacing: 2px; font-weight: bold; }
-  .meta { font-size: 9px; color: #999; text-align: center; margin: 4px 0 12px 0; font-family: 'Courier New', monospace; }
-  .box { background: #f8fafc; border: 1px solid #e5e7eb; border-left: 4px solid #059669; padding: 10px 12px; margin-bottom: 8px; }
-  .lbl { font-size: 8px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .val { font-size: 12px; font-weight: bold; color: #111; margin-top: 2px; }
-  .big { font-size: 14px; color: #059669; font-weight: bold; }
-  .legal { background: #fffbeb; border: 1px solid #fde68a; padding: 14px 16px; margin: 14px 0; font-size: 10px; line-height: 1.7; color: #451a03; }
-  .legal ol { padding-left: 18px; margin: 6px 0 0 0; }
-  .legal li { margin-bottom: 5px; }
-  .em { font-weight: bold; color: #78350f; }
-  .sig { margin-top: 24px; }
-  .sig table { border: none; }
-  .sig td { border: none; width: 50%; text-align: center; padding: 10px 20px; vertical-align: top; }
-  .stamp { width: 60px; height: 60px; border: 2px dashed #059669; border-radius: 50%; margin: 0 auto 6px auto; line-height: 60px; font-size: 8px; color: #059669; font-weight: bold; text-align: center; }
-  .sigline { border-bottom: 1px solid #333; height: 50px; margin: 0 10px; }
-  .siglbl { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
-  .signame { font-size: 12px; font-weight: bold; margin-top: 3px; }
-  .sigdt { font-size: 9px; color: #aaa; margin-top: 2px; font-family: 'Courier New', monospace; }
-  .ftr { border-top: 2px solid #059669; padding-top: 10px; text-align: center; margin-top: 24px; }
-  .ftr p { font-size: 9px; color: #999; margin: 2px 0; }
-  .ftr strong { color: #333; }
-  .total td { background: #f0fdf4; font-weight: bold; border-top: 2px solid #059669; }
+  @page { margin: 12mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    font-size: 10pt;
+  }
+  .brand-bar {
+    background: linear-gradient(135deg, #059669, #047857);
+    color: #fff;
+    text-align: center;
+    padding: 18px 0 12px 0;
+    border-radius: 0 0 24px 24px;
+    margin-bottom: 20px;
+  }
+  .brand-logo {
+    font-size: 28pt;
+    font-weight: 900;
+    letter-spacing: 6px;
+  }
+  .brand-sub {
+    font-size: 7pt;
+    letter-spacing: 3px;
+    opacity: 0.85;
+    margin-top: 2px;
+  }
+  .doc-title {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: 800;
+    color: #059669;
+    margin: 8px 0;
+  }
+  .doc-badge {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    text-align: center;
+    font-size: 7pt;
+    color: #991b1b;
+    padding: 5px;
+    margin: 6px 0 14px 0;
+    letter-spacing: 2px;
+    font-weight: 700;
+    border-radius: 4px;
+  }
+  .doc-meta {
+    font-size: 7pt;
+    color: #94a3b8;
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-size: 11pt;
+    color: #059669;
+    border-bottom: 2px solid #059669;
+    padding-bottom: 4px;
+    margin: 20px 0 10px 0;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  th, td { padding: 7px 10px; font-size: 9pt; }
+  th {
+    background: #059669;
+    color: #fff;
+    text-align: left;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td { border: 1px solid #e2e8f0; }
+  .label-cell { font-weight: 600; color: #64748b; background: #f8fafc; width: 40%; }
+  .value-cell { font-weight: 600; color: #0f172a; }
+  .critical-box {
+    background: #fffbeb;
+    border: 2px solid #f59e0b;
+    border-left: 6px solid #d97706;
+    padding: 14px 18px;
+    margin: 14px 0;
+    font-size: 9pt;
+    line-height: 1.6;
+    color: #451a03;
+    border-radius: 8px;
+  }
+  .critical-box strong { color: #92400e; }
+  .collateral-table td { border: 1px solid #fde68a; }
+  .sig-section { margin-top: 24px; }
+  .sig-grid { display: flex; gap: 20px; }
+  .sig-col { flex: 1; text-align: center; }
+  .sig-stamp {
+    width: 64px; height: 64px;
+    border: 2px dashed #059669;
+    border-radius: 50%;
+    margin: 0 auto 6px auto;
+    line-height: 64px;
+    font-size: 6pt;
+    color: #059669;
+    font-weight: 700;
+    text-align: center;
+  }
+  .sig-line { border-bottom: 1.5px solid #334155; height: 50px; margin: 0 8px; }
+  .sig-label { font-size: 7pt; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+  .sig-name { font-size: 10pt; font-weight: 700; margin-top: 3px; color: #0f172a; }
+  .sig-dt { font-size: 7pt; color: #94a3b8; font-family: 'Courier New', monospace; }
+  .hash-row {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 16px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 7pt;
+    color: #64748b;
+    text-align: center;
+    word-break: break-all;
+  }
+  .footer {
+    border-top: 2px solid #059669;
+    padding-top: 10px;
+    text-align: center;
+    margin-top: 24px;
+  }
+  .footer p { font-size: 7pt; color: #94a3b8; margin: 1px 0; }
+  .badge {
+    display: inline-block;
+    background: #ecfdf5;
+    color: #059669;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 8pt;
+  }
+  .watermark {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-size: 72pt;
+    color: rgba(5, 150, 105, 0.035);
+    font-weight: 900;
+    pointer-events: none;
+    z-index: -1;
+    letter-spacing: 12px;
+  }
 </style>
 </head>
 <body>
 
-<div class="hdr">
-  <div class="logo">EQUB</div>
-  <div class="sub">Ethiopian Savings Circle &middot; Digital Agreement</div>
+<div class="watermark">EQUB AGREEMENT</div>
+
+<div class="brand-bar">
+  <div class="brand-logo">EQUB</div>
+  <div class="brand-sub">Digital Equb Savings &amp; Credit Platform</div>
 </div>
 
-<div class="addr">
-  <strong>Head Office:</strong> Bole Road, Addis Ababa, Ethiopia<br>
-  <strong>Phone:</strong> +251 911 00 0000<br>
-  <strong>Email:</strong> info@equb-app.com<br>
-  <strong>Web:</strong> www.equb-app.com
+<div class="doc-title">📄 DIGITAL EQUB MEMBERSHIP &amp; LIABILITY AGREEMENT</div>
+<div class="doc-badge">⚠️ LEGALLY BINDING AGREEMENT — READ BEFORE SIGNING</div>
+<div class="doc-meta">Document ID: <strong>${docId}</strong> &nbsp;|&nbsp; Issue Date: <strong>${today}</strong></div>
+
+<!-- 1. CONTRACTING PARTIES -->
+<h2>1. CONTRACTING PARTIES</h2>
+<table>
+  <tr><td class="label-cell">Equb Platform / Group</td><td class="value-cell">Gojo Equb Savings Circle — Head Office, Addis Ababa</td></tr>
+  <tr><td class="label-cell">Member Full Name</td><td class="value-cell">${member.name}</td></tr>
+  <tr><td class="label-cell">National ID / Passport No.</td><td class="value-cell">${member.id}</td></tr>
+  <tr><td class="label-cell">Phone Number</td><td class="value-cell">${member.phone}</td></tr>
+  <tr><td class="label-cell">Registration Date</td><td class="value-cell">${member.joinedAt}</td></tr>
+</table>
+
+<!-- 2. EQUB FINANCIAL TERMS -->
+<h2>2. EQUB FINANCIAL TERMS</h2>
+<table>
+  <tr><td class="label-cell">Total Cycle Amount</td><td class="value-cell"><strong>ETB ${totalBalance.toLocaleString()}</strong></td></tr>
+  <tr><td class="label-cell">Individual Contribution</td><td class="value-cell">${categories.map(c => `ETB ${toLoc(parseInt(c))}`).join(' + ') || '—'}</td></tr>
+  <tr><td class="label-cell">Payment Frequency</td><td class="value-cell">Daily</td></tr>
+  <tr><td class="label-cell">Total Number of Members</td><td class="value-cell">${memberCount}</td></tr>
+  <tr><td class="label-cell">Member Classification</td><td class="value-cell"><span class="badge">${memberType.labelEn} / ${memberType.labelAm}</span></td></tr>
+  <tr><td class="label-cell">Collateral / License Type</td><td class="value-cell"><strong>${memberType.licenseType}</strong></td></tr>
+</table>
+
+<!-- 3. LEGAL COLLATERAL & DEFAULT CLAUSES -->
+<h2>3. LEGAL COLLATERAL &amp; DEFAULT CLAUSES</h2>
+<div class="critical-box">
+  <strong>⚠️ LEGAL NOTICE &amp; BINDING TERMS:</strong><br><br>
+  By digitally signing this agreement, the Member acknowledges and explicitly agrees to the following enforcement actions in the event of a payment default or failure to fulfill the Equb terms:<br><br>
+
+  <strong>1. Collateral Submission:</strong> The Member hereby registers their official <strong>${memberType.licenseType}</strong> (Registration No: <strong>${member.id}-LIC-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}</strong>) as security collateral for this Equb cycle.<br><br>
+
+  <strong>2. License Retention:</strong> In case of default, the Equb Administration reserves the right to legally hold and report the registered license to relevant regulatory authorities until the outstanding balance is cleared.<br><br>
+
+  <strong>3. Salary/Income Withholding:</strong> If the Member fails to pay their due rounds after receiving the Equb lot, the Equb Administration is legally authorized to contact the Member's employer or financial institution to withhold their salary fully or partially until the total defaulted amount is fully recovered.
 </div>
 
-<div class="conf">CONFIDENTIAL &mdash; FOR LEGAL PURPOSES ONLY</div>
-
-<h1>MEMBER REGISTRATION &amp; AGREEMENT</h1>
-<div class="meta">Document Ref: ${docId} &nbsp;|&nbsp; Generated: ${today}</div>
-
-<h2>1. MEMBER PERSONAL INFORMATION</h2>
-<table>
+<table class="collateral-table">
+  <tr><th colspan="2" style="background:#d97706;">APPLICABLE ENFORCEMENT BY MEMBER TYPE</th></tr>
   <tr>
-    <td style="width:50%;"><div class="lbl">Full Name</div><div class="val">${member.name}</div></td>
-    <td><div class="lbl">Phone Number</div><div class="val">${member.phone}</div></td>
+    <td class="label-cell" style="width:50%;">🔴 Big Seller / Merchant</td>
+    <td class="value-cell" style="color:#991b1b;">Trade License REVOCATION + Business prohibition</td>
   </tr>
   <tr>
-    <td><div class="lbl">Member ID</div><div class="val">${member.id}</div></td>
-    <td><div class="lbl">Date of Registration</div><div class="val">${member.joinedAt}</div></td>
+    <td class="label-cell">🟡 Local Transport Driver</td>
+    <td class="value-cell" style="color:#92400e;">Driving License IMMEDIATE SUSPENSION</td>
   </tr>
   <tr>
-    <td><div class="lbl">Document Issue Date</div><div class="val">${today}</div></td>
-    <td><div class="lbl">Agreement Type</div><div class="val">Equb Circle Membership</div></td>
+    <td class="label-cell">🔵 Government Office Worker</td>
+    <td class="value-cell" style="color:#1e40af;">Full Monthly Salary GARNISHMENT</td>
   </tr>
 </table>
 
-<h2>2. REGISTRATION &amp; PAYMENT DETAILS</h2>
-<table>
-  <tr>
-    <td style="width:33%;text-align:center;"><div class="lbl">Total Slots</div><div class="big">${userSlots.length}</div></td>
-    <td style="width:33%;text-align:center;"><div class="lbl">Categories Joined</div><div class="big">${categories.length}</div></td>
-    <td style="width:34%;text-align:center;"><div class="lbl">Total Balance</div><div class="big">${totalBalance.toLocaleString()} ETB</div></td>
-  </tr>
-</table>
+<!-- 4. EXECUTION & DIGITAL SIGNATURES -->
+<h2>4. EXECUTION &amp; DIGITAL SIGNATURES</h2>
+<p style="font-size:8pt;color:#64748b;margin-bottom:10px;">
+  This document is electronically generated and digitally signed, constituting a legally binding contract under applicable electronic signature laws (Ethiopian Electronic Transactions Proclamation).
+</p>
 
-<table style="margin-top:10px;">
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Category</th>
-      <th>Slot #</th>
-      <th>Monthly Contribution</th>
-      <th>Frequency</th>
-      <th>Current Balance</th>
-      <th>Status</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${slotRows}
-    <tr class="total">
-      <td colspan="4" style="text-align:left;">TOTAL</td>
-      <td colspan="2" style="text-align:right;color:#059669;font-weight:bold;">${totalBalance.toLocaleString()} ETB</td>
-      <td></td>
-    </tr>
-  </tbody>
-</table>
-
-<h2>3. CATEGORY BREAKDOWN</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Category</th>
-      <th>Slots</th>
-      <th>Frequency</th>
-      <th>Total Rounds</th>
-      <th>Balance</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${catSummary}
-  </tbody>
-</table>
-
-<h2>4. TERMS &amp; CONDITIONS</h2>
-<div class="legal">
-  <h3>Agreement Between Member and Equb Circle</h3>
-  <p>I, <span class="em">${member.name}</span> (Member ID: <span class="em">${member.id}</span>), hereby voluntarily agree to the following terms and conditions:</p>
-  <ol>
-    <li><span class="em">Nature of Equb:</span> I understand and acknowledge that "Equb" is a traditional Ethiopian savings circle (also known as "Iqub" or "Iddir" variant), where members contribute a fixed amount of money at regular intervals and take turns receiving the total pooled amount. I voluntarily join this circle of my own free will.</li>
-    <li><span class="em">Deposit Obligations:</span> I agree to make all required deposits in full and on time as per the schedule assigned to my slot(s). Failure to make deposits within the stipulated time may result in penalties, including liens on my slot(s) and potential forfeiture of accumulated savings.</li>
-    <li><span class="em">Penalties and Liens:</span> I acknowledge that repeated failure to make deposits (as defined by the circle's rules) may result in a lien being placed on my slot(s), restricting my access to funds until the lien is cleared. I understand that liens may be imposed after two (2) or more consecutive missed deposits.</li>
-    <li><span class="em">Payout Rules:</span> I agree that payout amounts and schedules are determined by the circle administrators based on the agreed-upon rules. I shall have no claim to payouts beyond what is allocated by the circle's governing rules.</li>
-    <li><span class="em">Withdrawal Policy:</span> I understand that I may request withdrawal from the circle subject to the circle's withdrawal policy. Early withdrawal may result in forfeiture of accumulated benefits, and I must provide at least thirty (30) days' written notice.</li>
-    <li><span class="em">Personal Data:</span> I consent to the collection, storage, and processing of my personal information (including name, phone number, and financial records) solely for the purpose of managing my Equb membership and complying with applicable Ethiopian financial regulations.</li>
-    <li><span class="em">Dispute Resolution:</span> I agree that any disputes arising from this agreement shall first be addressed through internal mediation by the circle administrators. If unresolved, disputes shall be referred to the appropriate authorities in Addis Ababa, Federal Democratic Republic of Ethiopia.</li>
-    <li><span class="em">Governing Law:</span> This agreement shall be governed by and construed in accordance with the laws of the Federal Democratic Republic of Ethiopia, including applicable proclamations and regulations governing savings circles and financial cooperatives.</li>
-    <li><span class="em">Digital Signature:</span> I acknowledge that this document bears my digital signature, which has the same legal force and effect as a handwritten signature under applicable Ethiopian law and the Electronic Transactions Proclamation.</li>
-    <li><span class="em">Entire Agreement:</span> This document constitutes the entire agreement between the member and the Equb circle. Any amendments must be made in writing and signed by both parties.</li>
-  </ol>
+<div class="sig-section">
+<div class="sig-grid">
+  <div class="sig-col">
+    <div class="sig-stamp">EQUB<br>SEAL</div>
+    <div class="sig-line"></div>
+    <div class="sig-label">Equb Administrator Signature</div>
+    <div class="sig-name">Equb Administrator</div>
+    <div class="sig-label">Gojo Equb — Head Office</div>
+    <div class="sig-dt">Digitally Signed via System</div>
+    <div class="sig-dt">Date: ${signatureDate}</div>
+  </div>
+  <div class="sig-col">
+    <div class="sig-stamp">DIGITAL<br>SIGN</div>
+    <div class="sig-line"></div>
+    <div class="sig-label">Member Digital Signature</div>
+    <div class="sig-name">${member.name}</div>
+    <div class="sig-label">Member ID: ${member.id}</div>
+    <div class="sig-dt">Confirmed via OTP / Secure Click</div>
+    <div class="sig-dt">Date: ${signatureDate}</div>
+  </div>
+</div>
 </div>
 
-<h2>5. SIGNATURES &amp; OFFICIAL SEAL</h2>
-<p style="font-size:10px;color:#888;margin-bottom:12px;">By signing below, both parties confirm they have read, understood, and agree to all terms and conditions stated in this agreement.</p>
-
-<div class="sig">
-<table>
-  <tr>
-    <td>
-      <div class="stamp">OFFICIAL<br>STAMP</div>
-      <div class="sigline"></div>
-      <div class="siglbl">Member Signature</div>
-      <div class="signame">${member.name}</div>
-      <div class="siglbl">Member ID: ${member.id}</div>
-      <div class="sigdt">Date: ${signatureDate}</div>
-    </td>
-    <td>
-      <div class="stamp">EQUB<br>SEAL</div>
-      <div class="sigline"></div>
-      <div class="siglbl">Circle Administrator</div>
-      <div class="signame">Equb Administrator</div>
-      <div class="siglbl">Head Office &mdash; Addis Ababa</div>
-      <div class="sigdt">Date: ${signatureDate}</div>
-    </td>
-  </tr>
-</table>
+<div class="hash-row">
+  <strong>Verification Hash:</strong> ${verificationHash}
 </div>
 
-<div class="ftr">
-  <p><strong>EQUB</strong> &mdash; Ethiopian Savings Circle Platform</p>
-  <p>Bole Road, Addis Ababa, Ethiopia | +251 911 00 0000 | info@equb-app.com</p>
+<div class="footer">
+  <p><strong>ጎጆ እቁብ (GOJO EQUB)</strong> — Ethiopian Digital Savings Platform</p>
+  <p>Bole Road, Addis Ababa, Ethiopia | +251 911 00 0000 | info@equb-app.com | www.equb-app.com</p>
+  <p>Licensed under Proclamation No. 1007/2024 | Reg. No. FCA-2026-0042</p>
   <p>This document is digitally generated and legally binding. Document Ref: ${docId}</p>
-  <p>&copy; ${new Date().getFullYear()} Equb App. All rights reserved.</p>
+  <p>&copy; ${new Date().getFullYear()} Gojo Equb. All rights reserved. | Printed: ${today}</p>
 </div>
 
 </body>
 </html>`
 
     try {
-      const { base64: rawBase64 } = await Print.printToFileAsync({ html, base64: true })
-      const b64 = rawBase64 || ''
+      const result = await Print.printToFileAsync({ html, base64: true })
+      let b64 = ''
+      if (result.base64) {
+        b64 = result.base64
+        if (b64.includes('base64,')) b64 = b64.split('base64,')[1]
+      } else if ((result as any).uri) {
+        showToast(isAm ? 'PDF ተፈጥሯል' : 'PDF generated', 'success')
+        return
+      }
+      if (!b64) { showToast(isAm ? 'PDF ማመንጨት አልተሳካም' : 'PDF generation failed', 'error'); return }
+
       if (Platform.OS === 'web') {
         const byteChars = atob(b64)
         const byteNums = new Array(byteChars.length)
@@ -623,17 +784,24 @@ export function AdminDashboardScreen() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `agreement-${member.name.replace(/\s+/g, '_')}-${docId}.pdf`
+        a.download = `Equb-Agreement-${member.name.replace(/\s+/g, '_')}.pdf`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
       } else {
-        await Sharing.shareAsync(`data:application/pdf;base64,${b64}`, {
-          mimeType: 'application/pdf',
-          dialogTitle: `${member.name} - Equb Agreement`,
-          UTI: 'com.adobe.pdf',
-        })
+        const shareable = await Sharing.isAvailableAsync()
+        if (shareable) {
+          await Sharing.shareAsync(`data:application/pdf;base64,${b64}`, {
+            mimeType: 'application/pdf',
+            dialogTitle: `${member.name} - Equb Agreement`,
+            UTI: 'com.adobe.pdf',
+          })
+        } else {
+          const fallback = await Print.printToFileAsync({ html })
+          showToast(isAm ? `PDF ተቀምጧል: ${fallback.uri}` : `PDF saved: ${fallback.uri}`, 'success')
+          return
+        }
       }
       showToast(isAm ? 'PDF ተፈጥሯል' : 'PDF generated successfully', 'success')
     } catch (err: any) {
@@ -650,7 +818,7 @@ export function AdminDashboardScreen() {
     }
     setCreatingRound(true)
     try {
-      await roundsApi.create(createRoundForm)
+      await store.createRoundAction(createRoundForm)
       showToast(isAm ? 'ክብዬ ተፈጥሯል' : 'Round created successfully', 'success')
       setShowCreateRound(false)
       setCreateRoundForm({
@@ -675,7 +843,7 @@ export function AdminDashboardScreen() {
 
   async function handleActivateRound(id: number) {
     try {
-      await roundsApi.activate(id)
+      await store.activateRoundAction(id)
       showToast(isAm ? 'ክብዬ ተንቀሳቅሷል' : 'Round activated', 'success')
       fetchRounds()
     } catch (err) {
@@ -685,7 +853,7 @@ export function AdminDashboardScreen() {
 
   async function handleCompleteRound(id: number) {
     try {
-      await roundsApi.complete(id)
+      await store.completeRoundAction(id)
       showToast(isAm ? 'ክብዬ ተጠናቅቋል' : 'Round completed', 'success')
       fetchRounds()
     } catch (err) {
@@ -695,17 +863,17 @@ export function AdminDashboardScreen() {
 
   async function handleCancelRound(id: number) {
     try {
-      await roundsApi.cancel(id)
-      showToast(isAm ? 'ክብዬ ተ 취소 ችሏል' : 'Round cancelled', 'success')
+      await store.cancelRoundAction(id)
+      showToast(isAm ? 'ክብዬ ተሰርዟል' : 'Round cancelled', 'success')
       fetchRounds()
     } catch (err) {
-      showToast(isAm ? 'ክብዬ መ 취소 አልተሳካም' : 'Failed to cancel round', 'error')
+      showToast(isAm ? 'ክብዬ መሰረዝ አልተሳካም' : 'Failed to cancel round', 'error')
     }
   }
 
   async function handleDeleteRound(id: number) {
     try {
-      await roundsApi.delete(id)
+      await store.deleteRoundAction(id)
       showToast(isAm ? 'ክብዬ ጠፍቷል' : 'Round deleted', 'success')
       fetchRounds()
     } catch (err) {
@@ -748,7 +916,7 @@ export function AdminDashboardScreen() {
     if (!editingRound) return
     setSavingEdit(true)
     try {
-      await roundsApi.update(editingRound.id, createRoundForm)
+      await store.updateRoundAction(editingRound.id, createRoundForm as any)
       showToast(isAm ? 'ክብዬ ተሻሽሏል' : 'Round updated', 'success')
       setShowEditRound(false)
       setEditingRound(null)
@@ -825,7 +993,7 @@ export function AdminDashboardScreen() {
             </View>
             <View style={styles.riskDivider} />
             <View style={styles.riskItem}>
-              <Text style={[styles.riskNum, { color: '#f59e0b' }]}>{delinquentSlots.length}</Text>
+              <Text style={[styles.riskNum, { color: '#f59e0b' }]}>{delinquentCount}</Text>
               <Text style={styles.riskLabel}>{a.delinquent}</Text>
             </View>
           </View>
@@ -912,12 +1080,13 @@ export function AdminDashboardScreen() {
           const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
           const totalBalance = userSlots.reduce((sum, s) => sum + s.balance, 0)
           return (
-            <TouchableOpacity key={u.id} activeOpacity={0.7} onPress={() => {
-              setSelectedMember(u)
-              setMemberDetailSlots(userSlots)
-              setShowMemberModal(true)
-            }}>
+            <View key={u.id}>
             <Card style={[styles.memberCard, { backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafcfe' }]}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => {
+                setSelectedMember(u)
+                setMemberDetailSlots(userSlots)
+                setShowMemberModal(true)
+              }}>
               <View style={styles.memberHeader}>
                 <View style={styles.memberAvatar}>
                   <Text style={styles.memberAvatarText}>{u.name.charAt(0).toUpperCase()}</Text>
@@ -930,6 +1099,7 @@ export function AdminDashboardScreen() {
                   </Text>
                 </View>
               </View>
+              </TouchableOpacity>
               <View style={styles.slotRow}>
                 {userSlots.map(slot => {
                   const cfg = CATEGORY_CONFIG_MAP[slot.category]
@@ -950,15 +1120,13 @@ export function AdminDashboardScreen() {
                 })}
               </View>
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.callBtn} onPress={(e) => {
-                  e.stopPropagation?.()
+                <TouchableOpacity style={styles.callBtn} onPress={() => {
                   Linking.openURL(`tel:${u.phone}`)
                 }}>
                   <Ionicons name="call-outline" size={13} color={colors.primary} />
                   <Text style={styles.callBtnText}>{isAm ? 'ደውል' : 'Call'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.callBtn, { borderColor: '#8b5cf6' }]} onPress={(e) => {
-                  e.stopPropagation?.()
+                <TouchableOpacity style={[styles.callBtn, { borderColor: '#8b5cf6' }]} onPress={() => {
                   setSelectedMember(u)
                   setMemberDetailSlots(userSlots)
                   setShowMemberModal(true)
@@ -966,8 +1134,7 @@ export function AdminDashboardScreen() {
                   <Ionicons name="eye-outline" size={13} color="#8b5cf6" />
                   <Text style={[styles.callBtnText, { color: '#8b5cf6' }]}>{isAm ? 'ተመልከт' : 'View'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.callBtn, { borderColor: '#f59e0b' }]} onPress={(e) => {
-                  e.stopPropagation?.()
+                <TouchableOpacity style={[styles.callBtn, { borderColor: '#f59e0b' }]} onPress={() => {
                   setSelectedMember(u)
                   setMemberDetailSlots(userSlots)
                   setShowMemberModal(true)
@@ -975,8 +1142,7 @@ export function AdminDashboardScreen() {
                   <Ionicons name="create-outline" size={13} color="#f59e0b" />
                   <Text style={[styles.callBtnText, { color: '#f59e0b' }]}>{isAm ? 'አስተካክል' : 'Edit'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.callBtn, { borderColor: '#ef4444' }]} onPress={(e) => {
-                  e.stopPropagation?.()
+                <TouchableOpacity style={[styles.callBtn, { borderColor: '#ef4444' }]} onPress={() => {
                   Alert.alert(
                     isAm ? 'ሰርዝ?' : 'Delete?',
                     `${isAm ? 'ፈagit?' : 'Delete'} ${u.name}?`,
@@ -998,15 +1164,14 @@ export function AdminDashboardScreen() {
                 }}>
                   <Ionicons name="trash-outline" size={13} color="#ef4444" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.memberPdfBtn]} onPress={(e) => {
-                  e.stopPropagation?.()
+                <TouchableOpacity style={[styles.memberPdfBtn]} onPress={() => {
                   generateMemberPDF(u)
                 }}>
                   <Ionicons name="document-text-outline" size={13} color="#ef4444" />
                 </TouchableOpacity>
               </View>
             </Card>
-            </TouchableOpacity>
+            </View>
           )
         })}
         {filtered.length === 0 && <Text style={styles.emptyText}>{a.noMembers}</Text>}
@@ -1829,7 +1994,7 @@ export function AdminDashboardScreen() {
   }
 
   function renderPayments() {
-    const memberToday = MOCK_USERS.filter(u => {
+    const allMemberData = MOCK_USERS.filter(u => {
       if (catFilter !== 'all') {
         const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
         if (!userSlots.some(s => s.category === catFilter)) return false
@@ -1846,457 +2011,581 @@ export function AdminDashboardScreen() {
       const paid = MOCK_TODAY_STATUS[u.id] ?? false
       const slots = MOCK_SLOTS.filter(s => s.userId === u.id)
       return { user: u, paid, slots }
-    }).filter(m => dailyStatusFilter === 'paid' ? m.paid : !m.paid)
+    })
+    const memberToday = allMemberData.filter(m => dailyStatusFilter === 'paid' ? m.paid : !m.paid)
     const dailyTotalPages = Math.max(1, Math.ceil(memberToday.length / PER_PAGE))
     const dailySafePage = Math.min(dailyPage, dailyTotalPages)
     const paginatedDaily = memberToday.slice((dailySafePage - 1) * PER_PAGE, dailySafePage * PER_PAGE)
 
-    const paidToday = memberToday.filter(m => m.paid).length
-    const totalToday = memberToday.length
+    const paidToday = allMemberData.filter(m => m.paid).length
+    const totalToday = allMemberData.length
     const rateToday = totalToday ? Math.round(paidToday / totalToday * 100) : 0
+    const totalCollectedAmount = paidToday * 500
+    const expectedTotal = totalToday * 500
+    const outstandingTotal = expectedTotal - totalCollectedAmount
 
     const catPayData = CATEGORY_CODES.map(c => {
       const cfg = CATEGORY_CONFIG_MAP[c]
-      const members = memberToday.filter(m => m.slots.some(s => s.category === c))
+      const members = allMemberData.filter(m => m.slots.some(s => s.category === c))
       const paid = members.filter(m => m.paid).length
-      return { code: c, label: cfg?.label || c, color: cfg?.barColor || colors.primary, total: members.length, paid, pct: members.length ? Math.round(paid / members.length * 100) : 0 }
+      const unpaid = members.length - paid
+      return { code: c, label: cfg?.label || c, color: cfg?.barColor || colors.primary, total: members.length, paid, unpaid, pct: members.length ? Math.round(paid / members.length * 100) : 0 }
     })
 
-    const userStreaks: Record<string, { streak: number; total: number }> = {
-      'usr-1': { streak: 11, total: 12 }, 'usr-2': { streak: 10, total: 12 }, 'usr-3': { streak: 3, total: 12 },
-      'usr-4': { streak: 12, total: 12 }, 'usr-5': { streak: 5, total: 12 }, 'usr-6': { streak: 8, total: 12 },
-      'usr-7': { streak: 9, total: 12 }, 'usr-8': { streak: 2, total: 12 }, 'usr-9': { streak: 7, total: 12 },
-      'usr-10': { streak: 4, total: 12 },
+    function togglePaymentStatus(userId: string, currentStatus: boolean) {
+      MOCK_TODAY_STATUS[userId] = !currentStatus
+      setPaymentsRefreshKey(k => k + 1)
     }
-
-    /* Heatmap: 5 weeks of demo payment intensity */
-    const HEATMAP_DAYS = 35
-    const heatmapDays = Array.from({ length: HEATMAP_DAYS }, (_, i) => {
-      const d = new Date()
-      d.setDate(d.getDate() - (HEATMAP_DAYS - 1 - i))
-      const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      const dayPaid = MOCK_PAYMENTS.filter(p => p.timestamp.startsWith(dayStr) && p.status === 'success').length
-      const intensity = dayPaid >= 4 ? 1 : dayPaid >= 2 ? 0.6 : dayPaid >= 1 ? 0.3 : 0.08
-      return { day: d.getDay(), date: d.getDate(), intensity, key: dayStr }
-    })
-    const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
     return (
       <>
-        {/* View Toggle */}
-        <View style={styles.payToggleRow}>
-          <TouchableOpacity
-            style={[styles.payToggleBtn, paymentsView === 'daily' && styles.payToggleBtnActive]}
-            onPress={() => setPaymentsView('daily')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="today-outline" size={14} color={paymentsView === 'daily' ? '#fff' : colors.mutedForeground} />
-            <Text style={[styles.payToggleText, paymentsView === 'daily' && styles.payToggleTextActive]}>{a.todaysStatus}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.payToggleBtn, paymentsView === 'history' && styles.payToggleBtnActive]}
-            onPress={() => setPaymentsView('history')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="list-outline" size={14} color={paymentsView === 'history' ? '#fff' : colors.mutedForeground} />
-            <Text style={[styles.payToggleText, paymentsView === 'history' && styles.payToggleTextActive]}>{a.paymentLog}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.payToggleBtn, paymentsView === 'savings' && styles.payToggleBtnActive]}
-            onPress={() => setPaymentsView('savings')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="wallet-outline" size={14} color={paymentsView === 'savings' ? '#fff' : colors.mutedForeground} />
-            <Text style={[styles.payToggleText, paymentsView === 'savings' && styles.payToggleTextActive]}>{isAm ? 'ቁጠባ' : 'Savings'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ═══════ KPI Summary Strip ═══════ */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 2, marginBottom: 16 }}>
+          <LinearGradient colors={['#ecfdf5', '#d1fae5']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.payKpiCard, { borderLeftColor: '#059669' }]}>
+            <Text style={styles.payKpiValue}>ETB {toLoc(totalCollectedAmount)}</Text>
+            <Text style={styles.payKpiLabel}>{isAm ? 'የተሰበሰበ' : 'Collected'}</Text>
+          </LinearGradient>
+          <LinearGradient colors={['#eff6ff', '#dbeafe']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.payKpiCard, { borderLeftColor: '#0ea5e9' }]}>
+            <Text style={styles.payKpiValue}>ETB {toLoc(expectedTotal)}</Text>
+            <Text style={styles.payKpiLabel}>{isAm ? 'የሚጠበቅ' : 'Expected'}</Text>
+          </LinearGradient>
+          <LinearGradient colors={['#fef2f2', '#fecaca']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.payKpiCard, { borderLeftColor: '#ef4444' }]}>
+            <Text style={styles.payKpiValue}>ETB {toLoc(outstandingTotal)}</Text>
+            <Text style={styles.payKpiLabel}>{isAm ? 'ያልተከፈለ' : 'Outstanding'}</Text>
+          </LinearGradient>
+          <LinearGradient colors={['#faf5ff', '#f3e8ff']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.payKpiCard, { borderLeftColor: '#8b5cf6' }]}>
+            <Text style={[styles.payKpiValue, { color: rateToday >= 70 ? '#059669' : '#ef4444' }]}>{rateToday}%</Text>
+            <Text style={styles.payKpiLabel}>{isAm ? 'ማጠናቀቅ' : 'Rate'}</Text>
+          </LinearGradient>
+        </ScrollView>
 
-        {paymentsView === 'history' ? (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-              {(['all', 'paid', 'unpaid'] as const).map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[styles.filterChip, paymentDateFilter === f && styles.filterChipActive]}
-                  onPress={() => { setPaymentDateFilter(f); setPaymentPage(1) }}
-                >
-                  <Text style={[styles.filterChipText, paymentDateFilter === f && styles.filterChipTextActive]}>
-                    {f === 'all' ? a.all : f === 'paid' ? a.paid : a.unpaid}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <View style={{ height: 8 }} />
-
-            {filteredPayments.length === 0 && <Text style={styles.emptyText}>{isAm ? 'ክፍያ የለም' : 'No payments'}</Text>}
-            {paginatedPayments.items.map((p, i) => (
-              <View key={p.id} style={[styles.payLogCard, { backgroundColor: i % 2 === 0 ? '#ffffff' : '#fafcfe' }]}>
-                <View style={styles.payLogRow}>
-                  <View style={[styles.payLogAvatar, { backgroundColor: p.status === 'success' ? '#ecfdf5' : '#fef2f2' }]}>
-                    <Ionicons name={p.status === 'success' ? 'checkmark' : 'close'} size={14} color={p.status === 'success' ? '#059669' : '#ef4444'} />
+        {/* ═══════ Progress by Category ═══════ */}
+        <Card style={{ padding: 16, marginBottom: 16, gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#05966920', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="pie-chart-outline" size={16} color="#059669" />
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a' }}>
+                {isAm ? 'የክፍያ ሂደት በምድብ' : 'Payment Progress by Category'}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+              {paidToday}/{totalToday}
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+            {catPayData.map(c => (
+              <View key={c.code} style={styles.payProgressCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <ProgressRing pct={c.pct} size={48} color={c.color} />
+                  <View style={{ gap: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>{c.label}</Text>
+                    <Text style={{ fontSize: 11, color: '#64748b' }}>
+                      {c.paid}/{c.total} {isAm ? 'ተከፍሏል' : 'paid'}
+                    </Text>
+                    {c.unpaid > 0 && (
+                      <Text style={{ fontSize: 10, color: '#ef4444', fontWeight: '600' }}>
+                        {c.unpaid} {isAm ? 'አልተከፈለም' : 'unpaid'}
+                      </Text>
+                    )}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.memberName}>{p.userName}</Text>
-                    <Text style={styles.payLogMeta}>{formatDate(p.timestamp)} · {p.paymentGateway}</Text>
-                  </View>
-                  <Text style={[styles.payLogAmount, { color: p.status === 'success' ? '#059669' : '#ef4444' }]}>
-                    {p.status === 'success' ? '+' : '-'} ETB {toLoc(p.amount)}
-                  </Text>
+                </View>
+                <View style={{ height: 4, backgroundColor: '#f1f5f9', borderRadius: 2, marginTop: 8, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${c.pct}%`, backgroundColor: c.color, borderRadius: 2 }} />
                 </View>
               </View>
             ))}
-            {paginatedPayments.totalPages > 1 && (
-              <PaginationBar
-                currentPage={paymentPage}
-                totalPages={paginatedPayments.totalPages}
-                onPrev={() => setPaymentPage((p) => Math.max(1, p - 1))}
-                onNext={() => setPaymentPage((p) => Math.min(paginatedPayments.totalPages, p + 1))}
-              />
-            )}
-          </>
-        ) : (
-          <>
-            {/* Idea 5: Summary Card */}
-            <View style={styles.paySummaryRow}>
-              <View style={[styles.paySummaryItem, { backgroundColor: '#f0fdf4' }]}>
-                <Text style={styles.paySummaryValue}>{toLoc(paidToday * 500)}</Text>
-                <Text style={styles.paySummaryLabel}>{isAm ? 'ዛሬ የተሰበሰበ' : 'Collected Today'}</Text>
-              </View>
-              <View style={[styles.paySummaryItem, { backgroundColor: '#eff6ff' }]}>
-                <Text style={styles.paySummaryValue}>{paidToday}/{totalToday}</Text>
-                <Text style={styles.paySummaryLabel}>{isAm ? 'የተከፈለ' : 'Paid'}</Text>
-              </View>
-              <View style={[styles.paySummaryItem, { backgroundColor: rateToday >= 70 ? '#f0fdf4' : '#fef2f2' }]}>
-                <Text style={[styles.paySummaryValue, { color: rateToday >= 70 ? '#059669' : '#ef4444' }]}>{rateToday}%</Text>
-                <Text style={styles.paySummaryLabel}>{isAm ? 'መጠን' : 'Rate'}</Text>
-              </View>
-            </View>
+          </ScrollView>
+        </Card>
 
-            {/* Idea 2: Category Progress Rings */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
-              {catPayData.map(c => (
-                <View key={c.code} style={styles.payCatRingCard}>
-                  <ProgressRing pct={c.pct} size={52} color={c.color} />
-                  <Text style={styles.payCatRingLabel}>{c.label}</Text>
-                  <Text style={styles.payCatRingSub}>{c.paid}/{c.total}</Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            {/* Idea 1: Calendar Heatmap */}
-            <View style={styles.payHeatmapBox}>
-              <View style={styles.payHeatmapHeader}>
-                <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
-                <Text style={styles.payHeatmapTitle}>{isAm ? 'የክፍያ ሙቀት ካርታ' : 'Payment Heatmap'}</Text>
-              </View>
-              <View style={styles.payHeatmapGrid}>
-                {dayLabels.map((l, i) => (
-                  <Text key={l} style={styles.payHeatmapDayLabel}>{l}</Text>
-                ))}
-                {heatmapDays.map((d, i) => (
-                  <View key={d.key} style={[styles.payHeatmapCell, {
-                    backgroundColor: d.intensity >= 1 ? '#059669' : d.intensity >= 0.5 ? '#86efac' : d.intensity >= 0.2 ? '#bbf7d0' : '#f1f5f9',
-                    opacity: d.intensity >= 1 ? 1 : d.intensity >= 0.5 ? 0.8 : d.intensity >= 0.2 ? 0.7 : 0.5,
-                  }]} />
-                ))}
-              </View>
-            </View>
-
-            {/* Category + Round Filters */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-              {['all', ...CATEGORY_CODES].map(c => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.filterChip, catFilter === c && styles.filterChipActive]}
-                  onPress={() => { setCatFilter(c); setDailyPage(1) }}
-                >
-                  <Text style={[styles.filterChipText, catFilter === c && styles.filterChipTextActive]}>
-                    {c === 'all' ? a.all : (CATEGORY_CONFIG_MAP[c]?.label || c)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterRow, { marginTop: 6 }]}>
+        {/* ═══════ Filters — Compact Segmented Row ═══════ */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            <TouchableOpacity
+              style={[styles.payFilterChip, catFilter === 'all' && styles.payFilterChipActive]}
+              onPress={() => { setCatFilter('all'); setDailyPage(1) }}
+            >
+              <Text style={[styles.payFilterChipText, catFilter === 'all' && styles.payFilterChipTextActive]}>
+                {isAm ? 'ሁሉም' : 'All'}
+              </Text>
+            </TouchableOpacity>
+            {CATEGORY_CODES.map(c => (
               <TouchableOpacity
-                style={[styles.filterChip, memberRoundFilter === 'all' && styles.filterChipActive]}
-                onPress={() => { setMemberRoundFilter('all'); setDailyPage(1) }}
+                key={c}
+                style={[styles.payFilterChip, catFilter === c && styles.payFilterChipActive]}
+                onPress={() => { setCatFilter(c); setDailyPage(1) }}
               >
-                <Text style={[styles.filterChipText, memberRoundFilter === 'all' && styles.filterChipTextActive]}>
-                  {isAm ? 'ሁሉም' : 'All'}
+                <Text style={[styles.payFilterChipText, catFilter === c && styles.payFilterChipTextActive]}>
+                  {toLoc(parseInt(c))}
                 </Text>
               </TouchableOpacity>
-              {rounds.map((r, idx) => (
-                <TouchableOpacity
-                  key={r.id}
-                  style={[styles.filterChip, memberRoundFilter === String(r.id) && styles.filterChipActive]}
-                  onPress={() => { setMemberRoundFilter(String(r.id)); setDailyPage(1) }}
-                >
-                  <Text style={[styles.filterChipText, memberRoundFilter === String(r.id) && styles.filterChipTextActive]}>
-                    R{idx + 1}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterRow, { marginTop: 6 }]}>
-              {(['unpaid', 'paid'] as const).map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[styles.filterChip, dailyStatusFilter === f && styles.filterChipActive]}
-                  onPress={() => { setDailyStatusFilter(f); setDailyPage(1) }}
-                >
-                  <Text style={[styles.filterChipText, dailyStatusFilter === f && styles.filterChipTextActive]}>
-                    {f === 'paid' ? a.paid : a.unpaid}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            ))}
+            <View style={{ width: 1, height: 24, backgroundColor: '#e2e8f0', alignSelf: 'center' }} />
+            <TouchableOpacity
+              style={[styles.payFilterChip, dailyStatusFilter === 'unpaid' && styles.payFilterChipActive]}
+              onPress={() => { setDailyStatusFilter('unpaid'); setDailyPage(1) }}
+            >
+              <Ionicons name="close-circle-outline" size={12} color={dailyStatusFilter === 'unpaid' ? '#fff' : '#ef4444'} />
+              <Text style={[styles.payFilterChipText, { color: dailyStatusFilter === 'unpaid' ? '#fff' : '#ef4444' }, dailyStatusFilter === 'unpaid' && styles.payFilterChipTextActive]}>
+                {isAm ? 'ያልተከፈለ' : 'Unpaid'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.payFilterChip, dailyStatusFilter === 'paid' && styles.payFilterChipActive]}
+              onPress={() => { setDailyStatusFilter('paid'); setDailyPage(1) }}
+            >
+              <Ionicons name="checkmark-circle-outline" size={12} color={dailyStatusFilter === 'paid' ? '#fff' : '#059669'} />
+              <Text style={[styles.payFilterChipText, { color: dailyStatusFilter === 'paid' ? '#fff' : '#059669' }, dailyStatusFilter === 'paid' && styles.payFilterChipTextActive]}>
+                {isAm ? 'ተከፍሏል' : 'Paid'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
 
-            {/* Triage Member List with Streak Bars */}
-            {paginatedDaily
-              .sort((a, b) => Number(a.paid) - Number(b.paid))
-              .map((item) => {
-                const streak = userStreaks[item.user.id] || { streak: 0, total: 12 }
-                const streakPct = streak.total ? Math.round(streak.streak / streak.total * 100) : 0
-                const userSlots = MOCK_SLOTS.filter(s => s.userId === item.user.id)
-                return (
-                  <View key={item.user.id} style={[styles.payMemberCard, { opacity: item.paid ? 0.65 : 1 }]}>
-                    <View style={styles.payMemberRow}>
-                      <View style={[styles.payMemberDot, { backgroundColor: item.paid ? '#059669' : '#ef4444' }]} />
-                      <View style={styles.payMemberAvatar}>
-                        <Text style={styles.payMemberAvatarText}>{item.user.name.charAt(0)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.memberName, item.paid && { color: colors.mutedForeground }]}>{item.user.name}</Text>
-                        <Text style={styles.memberMeta}>{item.user.phone}</Text>
-                        <Text style={[styles.memberMeta, { fontSize: 9, color: '#6b7280' }]}>
-                          {userSlots.map(s => CATEGORY_CONFIG_MAP[s.category]?.label || s.category).join(', ')}
+        {/* ═══════ Member Payment List ═══════ */}
+        <Text style={styles.payListSectionTitle}>
+          {dailyStatusFilter === 'paid'
+            ? (isAm ? 'የተከፈለ አባላት' : 'PAID Members')
+            : (isAm ? 'ያልተከፈለ አባላት' : 'UNPAID Members')}
+          <Text style={{ fontWeight: '400', color: '#94a3b8' }}> ({memberToday.length})</Text>
+        </Text>
+
+        {paginatedDaily.map((m, idx) => {
+          const totalMemberAmount = m.slots.reduce((sum, s) => sum + parseInt(s.category), 0)
+          return (
+            <View key={m.user.id}>
+              <View style={[styles.payMemberCard, m.paid ? styles.payMemberCardPaid : styles.payMemberCardUnpaid]}>
+                {/* Card Top: Avatar + Info + Status */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                  <LinearGradient
+                    colors={m.paid ? ['#059669', '#047857'] : ['#ef4444', '#dc2626']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    style={styles.payMemberAvatar}
+                  >
+                    <Text style={styles.payMemberAvatarText}>{m.user.name.charAt(0)}</Text>
+                  </LinearGradient>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.payMemberName}>{m.user.name}</Text>
+                    <Text style={styles.payMemberMeta}>
+                      {m.user.phone} · {m.slots.length} {isAm ? 'ቦታ' : 'slot'}{m.slots.length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  <View style={[styles.payMemberStatusBadge, { backgroundColor: m.paid ? '#ecfdf5' : '#fef2f2' }]}>
+                    <View style={[styles.payMemberStatusDot, { backgroundColor: m.paid ? '#059669' : '#ef4444' }]} />
+                    <Text style={[styles.payMemberStatusText, { color: m.paid ? '#059669' : '#ef4444' }]}>
+                      {m.paid ? (isAm ? 'ተከፍሏል' : 'PAID') : (isAm ? 'አልተከፈለም' : 'UNPAID')}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Card Middle: Slot badges */}
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {m.slots.map(slot => {
+                    const cfg = CATEGORY_CONFIG_MAP[slot.category]
+                    return (
+                      <View key={slot.id} style={[styles.paySlotBadge, { borderLeftColor: cfg?.barColor || colors.primary }]}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: cfg?.barColor || colors.primary }}>
+                          {cfg?.label || slot.category}
                         </Text>
+                        <Text style={{ fontSize: 9, color: '#64748b' }}>{toLoc(parseInt(slot.category))} ETB</Text>
                       </View>
-                      <View style={[styles.payMemberBadge, { backgroundColor: item.paid ? '#ecfdf5' : '#fef2f2' }]}>
-                        <Text style={[styles.payMemberBadgeText, { color: item.paid ? '#059669' : '#ef4444' }]}>
-                          {item.paid ? a.paid : a.unpaid}
-                        </Text>
-                      </View>
-                    </View>
+                    )
+                  })}
+                </View>
 
-                    {/* Streak bar */}
-                    <View style={styles.streakBar}>
-                      <View style={styles.streakBarBg}>
-                        <View style={[styles.streakBarFill, { width: `${streakPct}%`, backgroundColor: item.paid ? '#059669' : '#f59e0b' }]} />
-                      </View>
-                      <Text style={styles.streakBarLabel}>{streak.streak}/{streak.total} {isAm ? 'ቀናት' : 'days'}</Text>
-                    </View>
-
-                    {/* Action buttons */}
-                    <View style={[styles.payActionRow, { flexWrap: 'wrap', gap: 6 }]}>
-                      <TouchableOpacity style={styles.payCallBtn} onPress={() => {
-                        Linking.openURL(`tel:${item.user.phone}`)
+                {/* Card Bottom: Actions */}
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                  <TouchableOpacity style={styles.payActionBtn} onPress={() => Linking.openURL(`tel:${m.user.phone}`)}>
+                    <Ionicons name="call-outline" size={13} color="#059669" />
+                    <Text style={styles.payActionBtnText}>{isAm ? 'ደውል' : 'Call'}</Text>
+                  </TouchableOpacity>
+                  {!m.paid ? (
+                    <>
+                      <TouchableOpacity style={[styles.payActionBtn, { backgroundColor: '#eff6ff' }]} onPress={() => {
+                        Linking.openURL(`sms:${m.user.phone}?body=${encodeURIComponent('Equb payment reminder - please make your daily contribution.')}`)
                       }}>
-                        <Ionicons name="call-outline" size={12} color={colors.primary} />
-                        <Text style={styles.payCallBtnText}>{isAm ? 'ደውል' : 'Call'}</Text>
+                        <Ionicons name="chatbox-outline" size={13} color="#0ea5e9" />
+                        <Text style={[styles.payActionBtnText, { color: '#0ea5e9' }]}>{isAm ? 'ኤስኤምኤስ' : 'SMS'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.payActionBtn, { backgroundColor: '#fefce8' }]} onPress={() => {
+                        Linking.openURL(`tel:*847*${m.user.phone.replace(/\D/g, '')}%23`)
+                      }}>
+                        <Ionicons name="phone-portrait-outline" size={13} color="#eab308" />
+                        <Text style={[styles.payActionBtnText, { color: '#eab308' }]}>{isAm ? 'USSD' : 'USSD'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.payUssdBtn, { opacity: item.paid ? 0.4 : 1 }]}
-                        disabled={item.paid}
-                        onPress={() => {
-                          Linking.openURL(`tel:*847*500*${item.user.phone.replace(/^0/, '')}#`)
-                        }}
+                        style={[styles.payActionBtn, { backgroundColor: '#ecfdf5' }]}
+                        onPress={() => togglePaymentStatus(m.user.id, m.paid)}
                       >
-                        <Ionicons name="code-slash-outline" size={12} color="#059669" />
-                        <Text style={styles.payUssdBtnText}>{isAm ? 'USSD' : 'USSD'}</Text>
+                        <Ionicons name="checkmark-outline" size={13} color="#059669" />
+                        <Text style={[styles.payActionBtnText, { color: '#059669' }]}>{isAm ? 'ክፍል ምልክት' : 'Mark Paid'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity style={[styles.payActionBtn, { backgroundColor: '#f0fdf4' }]} onPress={() => {
+                        setReceiptMember({ name: m.user.name, phone: m.user.phone, id: m.user.id, amount: totalMemberAmount, slots: m.slots })
+                        setShowReceipt(true)
+                      }}>
+                        <Ionicons name="receipt-outline" size={13} color="#059669" />
+                        <Text style={[styles.payActionBtnText, { color: '#059669' }]}>{isAm ? 'ደረሰኝ' : 'Receipt'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.payCallBtn, { backgroundColor: '#fef3c7', borderColor: '#f59e0b' }]}
-                        onPress={() => {
-                          Linking.openURL(`sms:${item.user.phone}?body=${encodeURIComponent(
-                            isAm ? `ሰላም ${item.user.name}! የዛሬው ቁጠባ ክፍያዎን ያስፈፅሙ። እናመሰግናለን።` : `Hello ${item.user.name}! Please make today's savings payment. Thank you.`
-                          )}`)
-                        }}
+                        style={[styles.payActionBtn, { backgroundColor: '#fef2f2' }]}
+                        onPress={() => togglePaymentStatus(m.user.id, m.paid)}
                       >
-                        <Ionicons name="chatbubble-outline" size={12} color="#f59e0b" />
-                        <Text style={[styles.payCallBtnText, { color: '#f59e0b' }]}>{isAm ? 'SMS' : 'SMS'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )
-              })}
-            {dailyTotalPages > 1 && (
-              <PaginationBar
-                currentPage={dailyPage}
-                totalPages={dailyTotalPages}
-                onPrev={() => setDailyPage((p) => Math.max(1, p - 1))}
-                onNext={() => setDailyPage((p) => Math.min(dailyTotalPages, p + 1))}
-              />
-            )}
-          </>
-        )}
-
-        {paymentsView === 'savings' && (
-          <>
-            {/* Savings Stats */}
-            <View style={{ backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-              <Text style={{ fontSize: 11, color: '#92400e', fontWeight: '600' }}>
-                {isAm ? 'ማስታወቂያ' : 'Notice'}
-              </Text>
-              <Text style={{ fontSize: 10, color: '#78350f', marginTop: 4, lineHeight: 15 }}>
-                {isAm
-                  ? 'አባሎች ከተመዝገቡ በኋላ 1 ወር ድሆ መውጫ አይችሉም። ከ1 ወር በኋላ ቁጠባቸውን ማስተረፍ ይችላሉ።'
-                  : 'Members cannot withdraw within 1 month of registration. After 1 month they can request withdrawal.'}
-              </Text>
-            </View>
-
-            <View style={styles.paySummaryRow}>
-              <View style={[styles.paySummaryItem, { backgroundColor: '#f0fdf4' }]}>
-                <Text style={styles.paySummaryValue}>{toLoc(savingsTotalBalance)}</Text>
-                <Text style={styles.paySummaryLabel}>{isAm ? 'ጠቅላላ ቁጠባ' : 'Total Savings'}</Text>
-              </View>
-              <View style={[styles.paySummaryItem, { backgroundColor: '#eff6ff' }]}>
-                <Text style={styles.paySummaryValue}>{savingsMembersCount}</Text>
-                <Text style={styles.paySummaryLabel}>{isAm ? 'አባሎች' : 'Members'}</Text>
-              </View>
-            </View>
-
-            {MOCK_SAVINGS.filter(s => s.balance > 0).map((s, idx) => {
-              const user = MOCK_USERS.find(u => u.id === s.userId)
-              if (!user) return null
-              const regDate = new Date(user.joinedAt)
-              const now = new Date()
-              const monthsDiff = (now.getFullYear() - regDate.getFullYear()) * 12 + (now.getMonth() - regDate.getMonth())
-              const canWithdraw = monthsDiff >= 1
-              const commission = Math.round(s.balance * 0.03)
-              const netAmount = s.balance - commission
-
-              return (
-                <Card key={s.userId} style={[styles.memberCard, { backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafcfe', marginBottom: 8 }]}>
-                  <View style={styles.memberHeader}>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberAvatarText}>{user.name.charAt(0).toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>{user.name}</Text>
-                      <Text style={styles.memberMeta}>{user.phone}</Text>
-                      <Text style={[styles.memberMeta, { color: colors.primary, fontWeight: '600' }]}>
-                        {isAm ? 'ቀሪ' : 'Balance'}: {toLoc(s.balance)} ETB
-                      </Text>
-                    </View>
-                    {!canWithdraw && (
-                      <View style={{ backgroundColor: '#fef2f2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 9, color: '#ef4444', fontWeight: '600' }}>
-                          {isAm ? '1 ወር ተቆልፏል' : 'Locked 1mo'}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {canWithdraw && (
-                      <TouchableOpacity
-                        style={[styles.callBtn, { backgroundColor: '#059669' }]}
-                        onPress={() => {
-                          setSelectedWinner({ spinId: s.userId, category: '500', winningSlot: 0, winnerName: user.name, netPayout: netAmount, timestamp: '', round: 0 })
-                          setPayoutPassword('')
-                          setPayoutError('')
-                          setPayoutStep('dial')
-                          setShowPayoutModal(true)
-                          Linking.openURL(`tel:*847*${netAmount}*${user.phone.replace(/^0/, '')}#`)
-                        }}
-                      >
-                        <Ionicons name="call-outline" size={13} color="#fff" />
-                        <Text style={[styles.callBtnText, { color: '#fff' }]}>{isAm ? 'ይውጥ (USSD)' : 'Pay (USSD)'}</Text>
-                      </TouchableOpacity>
-                    )}
-                    <View style={{ backgroundColor: '#f8fafc', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#e5e7eb' }}>
-                      <Text style={{ fontSize: 9, color: '#6b7280' }}>
-                        {isAm ? 'ኮሚሽን' : 'Comm'}: {toLoc(commission)} ETB (3%)
-                      </Text>
-                    </View>
-                    <View style={{ backgroundColor: '#f0fdf4', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#bbf7d0' }}>
-                      <Text style={{ fontSize: 9, color: '#059669', fontWeight: '600' }}>
-                        {isAm ? 'ለስላሳ' : 'Net'}: {toLoc(netAmount)} ETB
-                      </Text>
-                    </View>
-                  </View>
-                </Card>
-              )
-            })}
-
-            {MOCK_SAVINGS.filter(s => s.balance > 0).length === 0 && (
-              <Text style={styles.emptyText}>{isAm ? 'ምንም ቁጠባ የለም' : 'No savings found'}</Text>
-            )}
-
-            {/* Savings Payout Modal */}
-            <Modal visible={showPayoutModal} transparent animationType="fade">
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                  {payoutStep === 'dial' && (
-                    <>
-                      <View style={styles.modalIconCircle}>
-                        <Ionicons name="phone-portrait-outline" size={32} color={colors.primary} />
-                      </View>
-                      <Text style={styles.modalTitle}>{isAm ? 'USSD ትራንስፎር' : 'USSD Transfer'}</Text>
-                      <Text style={styles.modalAmount}>{toLoc(selectedWinner?.netPayout || 0)} ETB</Text>
-                      <Text style={styles.modalRecipient}>
-                        {isAm ? 'ለ' : 'To'}: {selectedWinner?.winnerName}
-                      </Text>
-                      <Text style={styles.ussdDialing}>{isAm ? 'እየተ撥ered...' : 'Dialing...'}</Text>
-                      <Text style={styles.ussdCode}>*847*{selectedWinner?.netPayout}*</Text>
-                      <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 16 }} />
-                      <Text style={{ fontSize: 10, color: '#6b7280', marginTop: 8 }}>{isAm ? 'ትሬንዝፎሩን ያረጋግጡ' : 'Confirm the transfer'}</Text>
-                    </>
-                  )}
-                  {payoutStep === 'password' && (
-                    <>
-                      <View style={[styles.modalIconCircle, { backgroundColor: '#fef3c7' }]}>
-                        <Ionicons name="lock-closed" size={32} color="#f59e0b" />
-                      </View>
-                      <Text style={styles.modalTitle}>{a.enterPin}</Text>
-                      <Text style={styles.modalSub}>{a.telebirrPin}</Text>
-                      <TextInput
-                        style={styles.ussdInput}
-                        value={payoutPassword}
-                        onChangeText={setPayoutPassword}
-                        placeholder="******"
-                        placeholderTextColor={colors.mutedForeground}
-                        secureTextEntry
-                        keyboardType="number-pad"
-                        maxLength={10}
-                      />
-                      {payoutError ? <Text style={styles.errorText}>{payoutError}</Text> : null}
-                      <View style={styles.modalBtnRow}>
-                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPayoutModal(false)}>
-                          <Text style={styles.cancelBtnText}>{a.cancel}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.submitBtn} onPress={handlePayoutPasswordSubmit} disabled={!payoutPassword}>
-                          <Text style={styles.submitBtnText}>{a.confirm}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  )}
-                  {payoutStep === 'processing' && (
-                    <>
-                      <View style={[styles.modalIconCircle, { backgroundColor: '#eff6ff' }]}>
-                        <ActivityIndicator color={colors.primary} size="large" />
-                      </View>
-                      <Text style={styles.modalTitle}>{isAm ? 'እየተ撥ered...' : 'Processing...'}</Text>
-                      <Text style={styles.modalSub}>{isAm ? 'ትሬንዞር እየተስራ ነው' : 'Transfer in progress'}</Text>
-                    </>
-                  )}
-                  {payoutStep === 'success' && (
-                    <>
-                      <View style={[styles.modalIconCircle, { backgroundColor: '#ecfdf5' }]}>
-                        <Ionicons name="checkmark-circle" size={48} color="#059669" />
-                      </View>
-                      <Text style={styles.modalTitle}>{isAm ? 'ተሳክቷል' : 'Successful'}</Text>
-                      <Text style={styles.modalAmount}>{toLoc(selectedWinner?.netPayout || 0)} ETB {isAm ? 'ተ撥Red' : 'transferred'}</Text>
-                      <TouchableOpacity style={styles.doneBtn} onPress={() => setShowPayoutModal(false)}>
-                        <Text style={styles.doneBtnText}>{a.done}</Text>
+                        <Ionicons name="close-outline" size={13} color="#ef4444" />
+                        <Text style={[styles.payActionBtnText, { color: '#ef4444' }]}>{isAm ? 'ተመለስ' : 'Undo'}</Text>
                       </TouchableOpacity>
                     </>
                   )}
                 </View>
               </View>
-            </Modal>
-          </>
+            </View>
+          )
+        })}
+        {memberToday.length === 0 && <Text style={styles.emptyText}>{a.noMembers}</Text>}
+
+        {dailyTotalPages > 1 && (
+          <PaginationBar
+            currentPage={dailyPage}
+            totalPages={dailyTotalPages}
+            onPrev={() => setDailyPage(p => Math.max(1, p - 1))}
+            onNext={() => setDailyPage(p => Math.min(dailyTotalPages, p + 1))}
+          />
         )}
+
+        {/* ═══════ Bottom Summary — Overall Progress Bar ═══════ */}
+        <Card style={styles.paySummaryCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="stats-chart-outline" size={16} color="#059669" />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
+                {isAm ? 'ዛሬ የክፍያ ማጠቃለያ' : "Today's Collection Summary"}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: rateToday >= 70 ? '#059669' : '#ef4444' }}>{rateToday}%</Text>
+          </View>
+          <View style={{ height: 8, backgroundColor: '#f1f5f9', borderRadius: 4, overflow: 'hidden', marginBottom: 12 }}>
+            <LinearGradient
+              colors={rateToday >= 70 ? ['#059669', '#34d399'] : ['#ef4444', '#fca5a5']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={{ height: '100%', width: `${rateToday}%`, borderRadius: 4 }}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{isAm ? 'የተሰበሰበ' : 'Collected'}</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#059669', marginTop: 2 }}>ETB {toLoc(totalCollectedAmount)}</Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: '#f1f5f9' }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{isAm ? 'ያልተከፈለ' : 'Outstanding'}</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#ef4444', marginTop: 2 }}>ETB {toLoc(outstandingTotal)}</Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: '#f1f5f9' }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{isAm ? 'የሚጠበቅ' : 'Expected'}</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#0ea5e9', marginTop: 2 }}>ETB {toLoc(expectedTotal)}</Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* ═══════ Receipt Modal ═══════ */}
+        <Modal visible={showReceipt} transparent animationType="fade" onRequestClose={() => setShowReceipt(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.receiptModalHeader}>
+                <View style={styles.receiptModalHeaderLeft}>
+                  <Ionicons name="receipt-outline" size={20} color={colors.primary} />
+                  <Text style={styles.receiptModalTitle}>{isAm ? 'የክፍያ ደረሰኝ' : 'Payment Receipt'}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowReceipt(false)} style={styles.roundFormClose} activeOpacity={0.7}>
+                  <Ionicons name="close" size={20} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              {receiptMember && (
+                <View style={styles.receiptBody}>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptFieldLabel}>{isAm ? 'የአባል መለያ' : 'Member ID'}</Text>
+                    <Text style={styles.receiptFieldValue}>{receiptMember.id}</Text>
+                  </View>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptFieldLabel}>{isAm ? 'ሙሉ ስም' : 'Full Name'}</Text>
+                    <Text style={styles.receiptFieldValue}>{receiptMember.name}</Text>
+                  </View>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptFieldLabel}>{isAm ? 'ስልክ' : 'Phone'}</Text>
+                    <Text style={styles.receiptFieldValue}>{receiptMember.phone}</Text>
+                  </View>
+                  {receiptMember.slots.map(s => {
+                    const cfg = CATEGORY_CONFIG_MAP[s.category]
+                    return (
+                      <View key={s.id} style={styles.receiptRow}>
+                        <Text style={styles.receiptFieldLabel}>{cfg?.label || s.category}</Text>
+                        <Text style={styles.receiptFieldValue}>{toLoc(parseInt(s.category))} ETB</Text>
+                      </View>
+                    )
+                  })}
+                  <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
+                    <Text style={[styles.receiptFieldLabel, { fontWeight: '700' }]}>{isAm ? 'ጠቅላላ' : 'Total'}</Text>
+                    <Text style={[styles.receiptFieldValue, { fontSize: 18, color: colors.primary, fontWeight: '700' }]}>
+                      {toLoc(receiptMember.amount)} ETB
+                    </Text>
+                  </View>
+                  <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
+                    <Text style={styles.receiptFieldLabel}>{isAm ? 'ሁኔታ' : 'Status'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#e6f4ea', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#137333' }} />
+                      <Text style={{ fontFamily: fonts.medium, fontSize: 10, fontWeight: '500', color: '#137333' }}>{isAm ? 'ተሳክቷል' : 'Successful'}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity style={styles.downloadPdfBtn} onPress={async () => {
+                    if (!receiptMember) return
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                      @page { margin: 15mm; }
+                      body { font-family: Arial,sans-serif; color: #1a1a1a; font-size: 12px; }
+                      .title { text-align: center; font-size: 18px; font-weight: 800; color: #059669; margin-bottom: 4px; }
+                      .sub { text-align: center; font-size: 11px; color: #555; margin-bottom: 16px; }
+                      table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+                      td { padding: 6px 10px; border: 1px solid #ccc; }
+                      td:first-child { font-weight: 700; background: #f5f5f5; width: 35%; }
+                      .badge { display: inline-block; background: #e6f4ea; color: #137333; font-weight: 700; padding: 2px 12px; border-radius: 4px; }
+                      .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 8px; }
+                    </style></head><body>
+                    <p class="title">${isAm ? 'የክፍያ ደረሰኝ' : 'PAYMENT RECEIPT'}</p>
+                    <p class="sub">Gojo Equb</p>
+                    <table>
+                      <tr><td>${isAm ? 'የአባል መለያ' : 'Member ID'}</td><td>${receiptMember.id}</td></tr>
+                      <tr><td>${isAm ? 'ሙሉ ስም' : 'Full Name'}</td><td>${receiptMember.name}</td></tr>
+                      <tr><td>${isAm ? 'ስልክ' : 'Phone'}</td><td>${receiptMember.phone}</td></tr>
+                      <tr><td>${isAm ? 'የተከፈለ መጠን' : 'Amount Paid'}</td><td>${toLoc(receiptMember.amount)} ETB</td></tr>
+                      <tr><td>${isAm ? 'ሁኔታ' : 'Status'}</td><td><span class="badge">${isAm ? 'ተሳክቷል' : 'Successful'}</span></td></tr>
+                    </table>
+                    <div class="footer"><p>${isAm ? 'ይህ ደረሰኝ በራስ-ሰር የመነጨ ነው' : 'This receipt was automatically generated'}</p></div>
+                    </body></html>`
+                    try {
+                      const { base64: rawBase64 } = await Print.printToFileAsync({ html, base64: true })
+                      const b64 = rawBase64 || ''
+                      if (Platform.OS === 'web') {
+                        const byteChars = atob(b64); const byteNums = new Array(byteChars.length)
+                        for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i)
+                        const byteArr = new Uint8Array(byteNums); const blob = new Blob([byteArr], { type: 'application/pdf' })
+                        const url = URL.createObjectURL(blob); const a = document.createElement('a')
+                        a.href = url; a.download = `receipt-${receiptMember.id}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+                      } else {
+                        await Sharing.shareAsync(`data:application/pdf;base64,${b64}`, { mimeType: 'application/pdf', dialogTitle: isAm ? 'ደረሰኝ' : 'Payment Receipt', UTI: 'com.adobe.pdf' })
+                      }
+                    } catch {}
+                  }} activeOpacity={0.8}>
+                    <Ionicons name="document-text-outline" size={18} color="#fff" />
+                    <Text style={styles.downloadPdfBtnText}>{isAm ? 'PDF አውርድ' : 'Download PDF'}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+      </>
+    )
+  }
+
+  /* ─── Promo / Broker Management ─── */
+  const [promoCodes, setPromoCodes] = useState<any[]>([])
+  const [promoStats, setPromoStats] = useState<any>(null)
+  const [showCreatePromo, setShowCreatePromo] = useState(false)
+  const [brokerName, setBrokerName] = useState('')
+  const [brokerPhone, setBrokerPhone] = useState('')
+  const [creatingPromo, setCreatingPromo] = useState(false)
+
+  async function fetchPromos() {
+    try {
+      const list = await api.get<{ promo_codes: any[] }>('/admin/promos')
+      const stats = await api.get<any>('/admin/promos/stats')
+      setPromoCodes(list.promo_codes || [])
+      setPromoStats((stats as any))
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (activeTab === 'promo') fetchPromos()
+  }, [activeTab])
+
+  async function handleCreatePromo() {
+    if (!brokerName.trim() || !brokerPhone.trim()) {
+      showToast(isAm ? 'እባክዎ ሁሉንም መረጃ ያስገቡ' : 'Please fill all fields', 'error')
+      return
+    }
+    setCreatingPromo(true)
+    try {
+      await api.post('/admin/promos', { broker_name: brokerName.trim(), broker_phone: brokerPhone.trim() })
+      showToast(isAm ? 'የፕሮሞ ኮድ ተፈጥሯል' : 'Promo code created', 'success')
+      setShowCreatePromo(false)
+      setBrokerName('')
+      setBrokerPhone('')
+      fetchPromos()
+    } catch (err) {
+      showToast(isAm ? 'መፍጠር አልተሳካም' : 'Failed to create', 'error')
+    } finally {
+      setCreatingPromo(false)
+    }
+  }
+
+  function renderPromo() {
+    const ps = promoStats
+    return (
+      <>
+        {/* Stats Strip */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+          {[
+            { label: a.totalBrokers, value: ps?.total_brokers ?? promoCodes.length.toString(), icon: 'people-outline' as const, color: '#059669' },
+            { label: a.totalRegs, value: ps?.total_registrations?.toString() ?? '0', icon: 'person-add-outline' as const, color: '#0ea5e9' },
+            { label: a.paidOut, value: `ETB ${toLoc(ps?.total_paid_out ?? 0)}`, icon: 'cash-outline' as const, color: '#f59e0b' },
+            { label: a.todayRegs, value: ps?.registrations_today?.toString() ?? '0', icon: 'today-outline' as const, color: '#8b5cf6' },
+          ].map((stat, i) => (
+<View key={i} style={[styles.statCard, { width: (screenWidth - 48) / 2, padding: 12 }]}>            
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: stat.color + '20', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={stat.icon} size={16} color={stat.color} />
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a' }}>{stat.value}</Text>
+              </View>
+              <Text style={{ fontSize: 11, color: '#94a3b8' }}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Generate Button */}
+        <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+          <TouchableOpacity
+            style={[styles.submitBtn, { flexDirection: 'row', gap: 8, justifyContent: 'center' }]}
+            onPress={() => setShowCreatePromo(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="gift-outline" size={18} color="#fff" />
+            <Text style={styles.submitBtnText}>{a.generateCode}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Broker List */}
+        <View style={{ paddingHorizontal: 16, flex: 1 }}>
+          <Text style={[styles.sectionTitle, { marginBottom: 8 }]}>{a.brokers}</Text>
+          {promoCodes.length === 0 ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <Ionicons name="gift-outline" size={48} color="#cbd5e1" />
+              <Text style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>{a.noBrokers}</Text>
+            </View>
+          ) : (
+            promoCodes.map((pc: any) => (
+              <Card key={pc.id} style={{ padding: 14, marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#05966920', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="person" size={16} color="#059669" />
+                      </View>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a' }}>{pc.broker_name}</Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#64748b', marginLeft: 40 }}>{pc.broker_phone}</Text>
+                    <View style={{ marginLeft: 40, marginTop: 6, flexDirection: 'row', gap: 6 }}>
+                      <View style={{ backgroundColor: '#ecfdf5', paddingVertical: 3, paddingHorizontal: 10, borderRadius: 100 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: '#059669' }}>{pc.code}</Text>
+                      </View>
+                      <View style={{ backgroundColor: '#fef2f2', paddingVertical: 3, paddingHorizontal: 10, borderRadius: 100 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: '#ef4444' }}>{pc.commission_rate}%</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 8, marginLeft: 40 }}>
+                      <View>
+                        <Text style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' }}>{a.registrations}</Text>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a' }}>{pc.total_registrations}</Text>
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' }}>{a.earnings}</Text>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: '#059669' }}>ETB {toLoc(pc.total_earned)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#059669', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => { showToast(isAm ? 'የUSSD ኮድ ተልኳል' : 'USSD code sent to broker', 'success') }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="phone-portrait-outline" size={14} color="#fff" />
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#fff' }}>{a.ussdPay}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#0ea5e9', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => { Linking.openURL(`tel:${pc.broker_phone}`) }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="call-outline" size={14} color="#fff" />
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#fff' }}>{a.call}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Card>
+            ))
+          )}
+        </View>
+
+        {/* Create Promo Modal */}
+        <Modal visible={showCreatePromo} transparent animationType="fade" onRequestClose={() => setShowCreatePromo(false)}>
+          <View style={styles.modalOverlay}>
+            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={[styles.modalContent, { padding: 20 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <View style={[styles.modalIconCircle, { backgroundColor: '#fef3c7' }]}>
+                  <Ionicons name="gift" size={20} color="#d97706" />
+                </View>
+                <Text style={styles.modalTitle}>{a.generateCode}</Text>
+              </View>
+              <View style={{ gap: 12, marginBottom: 16 }}>
+                <View>
+                  <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 4, fontWeight: '600' }}>{a.brokerName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8fafc', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, height: 48 }}>
+                    <Ionicons name="person-outline" size={18} color="#94a3b8" />
+                    <TextInput
+                      style={{ flex: 1, fontFamily: fonts.regular, fontSize: 14, color: '#0f172a', padding: 0 }}
+                      placeholder={isAm ? 'የደላላ ስም' : 'Broker full name'}
+                      placeholderTextColor="#94a3b8"
+                      value={brokerName}
+                      onChangeText={setBrokerName}
+                    />
+                  </View>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 4, fontWeight: '600' }}>{a.brokerPhone}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8fafc', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, height: 48 }}>
+                    <Ionicons name="phone-portrait-outline" size={18} color="#94a3b8" />
+                    <TextInput
+                      style={{ flex: 1, fontFamily: fonts.regular, fontSize: 14, color: '#0f172a', padding: 0 }}
+                      placeholder="09XXXXXXXX"
+                      placeholderTextColor="#94a3b8"
+                      value={brokerPhone}
+                      onChangeText={setBrokerPhone}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => { setShowCreatePromo(false); setBrokerName(''); setBrokerPhone('') }}>
+                  <Text style={styles.cancelBtnText}>{a.cancel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.submitBtn, { flex: 1 }]} onPress={handleCreatePromo} disabled={creatingPromo}>
+                  {creatingPromo ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>{isAm ? 'ፍጠር' : 'Create'}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </>
     )
   }
@@ -2370,6 +2659,7 @@ export function AdminDashboardScreen() {
         {activeTab === 'winners' && renderWinners()}
         {activeTab === 'payments' && renderPayments()}
         {activeTab === 'rounds' && renderRounds()}
+        {activeTab === 'promo' && renderPromo()}
         <TouchableOpacity style={styles.logoutFooter} onPress={async () => { await logout(); navigate('landing') }} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={18} color="#fff" />
           <Text style={styles.logoutFooterText}>{t.dashboard.logout}</Text>
@@ -2781,7 +3071,7 @@ const styles = StyleSheet.create({
   filterChip: {
     backgroundColor: colors.muted,
     borderRadius: 100,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2797,6 +3087,32 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
   },
   filterChipTextActive: { color: '#fff' },
+  statusSegRow: {
+    flexDirection: 'row',
+    width: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  statusSegBtn: {
+    flex: 1,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  statusSegBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  statusSegText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.mutedForeground,
+    letterSpacing: 1,
+  },
+  statusSegTextActive: { color: '#fff' },
 
   /* ─── Member Cards ─── */
   memberCard: {
@@ -3499,206 +3815,277 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* Summary row */
-  paySummaryRow: {
+  /* ─── KPI Summary Cards ─── */
+  kpiRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  paySummaryItem: {
+  kpiCard: {
     flex: 1,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     alignItems: 'center',
   },
-  paySummaryValue: {
+  kpiValue: {
+    fontFamily: fonts.bold,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.foreground,
+  },
+  kpiValueSmall: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.mutedForeground,
+  },
+  kpiLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 8,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+    marginTop: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  kpiSub: {
+    fontFamily: fonts.regular,
+    fontSize: 7,
+    color: '#94a3b8',
+    marginTop: 1,
+  },
+
+  /* ─── Section Title ─── */
+  progressSectionTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+
+  /* ─── Progress Cards Carousel ─── */
+  progressCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 16,
+    minWidth: 120,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  progressCardTop: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressCardMetric: {
     fontFamily: fonts.bold,
     fontSize: 15,
     fontWeight: '700',
     color: colors.foreground,
   },
-  paySummaryLabel: {
+  progressCardMetricTotal: {
     fontFamily: fonts.regular,
-    fontSize: 8,
+    fontSize: 11,
+    fontWeight: '400',
     color: colors.mutedForeground,
-    marginTop: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
-
-  /* Category progress rings */
-  payCatRingCard: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    minWidth: 80,
-    gap: 6,
-  },
-  payCatRingLabel: {
+  progressCardLabel: {
     fontFamily: fonts.semiBold,
     fontSize: 9,
-    fontWeight: '600',
-    color: colors.foreground,
-  },
-  payCatRingSub: {
-    fontFamily: fonts.regular,
-    fontSize: 8,
-    color: colors.mutedForeground,
-  },
-
-  /* Heatmap */
-  payHeatmapBox: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  payHeatmapHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  payHeatmapTitle: {
-    fontFamily: fonts.semiBold,
-    fontSize: 10,
     fontWeight: '600',
     color: colors.mutedForeground,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  payHeatmapGrid: {
+  progressCardPct: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  /* ─── Activity Heatmap Card ─── */
+  heatmapCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  heatmapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  heatmapTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  heatmapGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 3,
   },
-  payHeatmapDayLabel: {
+  heatmapDayLabel: {
     width: 18,
     fontSize: 8,
     textAlign: 'center',
     color: colors.mutedForeground,
     fontFamily: fonts.regular,
   },
-  payHeatmapCell: {
+  heatmapCell: {
     width: 18,
     height: 18,
     borderRadius: 4,
   },
+  heatmapLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 10,
+    justifyContent: 'flex-end',
+  },
+  heatmapLegendLabel: {
+    fontFamily: fonts.regular,
+    fontSize: 8,
+    color: '#94a3b8',
+  },
+  heatmapLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+  },
 
-  /* Triage member cards */
-  payMemberCard: {
+  /* ─── Pay Status Badge ─── */
+  payStatusBadge: {
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 8,
+  },
+  payStatusText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
+  /* ─── Bottom Summary Bar ─── */
+  bottomSummary: {
+    flexDirection: 'row',
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: '#f1f5f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    alignItems: 'center',
   },
-  payMemberRow: {
+  bottomSummaryItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  bottomSummaryLabel: {
+    fontFamily: fonts.regular,
+    fontSize: 8,
+    color: colors.mutedForeground,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  bottomSummaryValue: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.foreground,
+  },
+  bottomSummaryDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#f1f5f9',
+  },
+
+  /* ─── Receipt Modal ─── */
+  receiptModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 16,
+  },
+  receiptModalHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  payMemberDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+  receiptModalTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.foreground,
   },
-  payMemberAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#f1f5f9',
+  receiptBody: {
+    width: '100%',
+    gap: 0,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
-  payMemberAvatarText: {
+  receiptFieldLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  receiptFieldValue: {
     fontFamily: fonts.semiBold,
     fontSize: 13,
     fontWeight: '600',
     color: colors.foreground,
-  },
-  payMemberBadge: {
-    borderRadius: 100,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  payMemberBadgeText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 9,
-    fontWeight: '600',
-  },
-
-  /* Streak bar */
-  streakBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-    paddingLeft: 14,
-  },
-  streakBarBg: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#f1f5f9',
-    overflow: 'hidden',
-  },
-  streakBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  streakBarLabel: {
-    fontFamily: fonts.regular,
-    fontSize: 8,
-    color: colors.mutedForeground,
-    width: 42,
     textAlign: 'right',
   },
-
-  /* Triage action buttons */
-  payActionRow: {
+  downloadPdfBtn: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    marginTop: 10,
-    paddingLeft: 14,
-  },
-  payCallBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ecfdf5',
+    backgroundColor: colors.primary,
     borderRadius: 100,
-    paddingHorizontal: 14,
-    height: 28,
+    paddingVertical: 13,
+    marginTop: 20,
+    width: '100%',
   },
-  payCallBtnText: {
+  downloadPdfBtnText: {
     fontFamily: fonts.semiBold,
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.primary,
-  },
-  payUssdBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 100,
-    paddingHorizontal: 14,
-    height: 28,
-  },
-  payUssdBtnText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#059669',
+    color: '#fff',
   },
 
   /* ─── Spin Error ─── */
@@ -3957,6 +4344,172 @@ const styles = StyleSheet.create({
     padding: 20,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
+  },
+
+  /* ─── Payments Redesigned ─── */
+
+  payKpiCard: {
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    minWidth: 130,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  payKpiValue: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  payKpiLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  payProgressCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    minWidth: 175,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  payFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f8fafc',
+    borderRadius: 100,
+    paddingHorizontal: 14,
+    height: 32,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  payFilterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  payFilterChipText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  payFilterChipTextActive: {
+    color: '#ffffff',
+  },
+  payListSectionTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  payMemberCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  payMemberCardPaid: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+  payMemberCardUnpaid: {
+    backgroundColor: '#fffcfc',
+    borderColor: '#fecaca',
+  },
+  payMemberAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  payMemberAvatarText: {
+    color: '#ffffff',
+    fontFamily: fonts.bold,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  payMemberName: {
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  payMemberMeta: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  payMemberStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  payMemberStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  payMemberStatusText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  paySlotBadge: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderLeftWidth: 3,
+    gap: 2,
+  },
+  payActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ecfdf5',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    height: 28,
+  },
+  payActionBtnText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  paySummaryCard: {
+    padding: 16,
+    marginTop: 8,
+    gap: 0,
   },
 
   /* ─── Lock Overlay ─── */

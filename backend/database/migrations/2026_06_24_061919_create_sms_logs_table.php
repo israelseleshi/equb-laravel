@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('sms_logs', function (Blueprint $table) {
             $table->id();
+            $table->engine('InnoDB');
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->string('recipient', 20);
             $table->string('type');

@@ -137,8 +137,10 @@ class AdminController extends Controller
             'password' => 'required|string',
         ]);
 
-        // In production, verify admin Telebirr PIN
-        if ($request->password !== '123456') {
+        $storedPin = Setting::where('key', 'admin_payout_pin')->value('value');
+        $expectedPin = is_array($storedPin) ? ($storedPin['pin'] ?? env('ADMIN_PAYOUT_PIN', '123456')) : env('ADMIN_PAYOUT_PIN', '123456');
+
+        if ($request->password !== $expectedPin) {
             return response()->json(['message' => 'Wrong password'], 422);
         }
 

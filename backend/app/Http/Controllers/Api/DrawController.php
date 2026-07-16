@@ -7,6 +7,7 @@ use App\Models\Draw;
 use App\Models\Slot;
 use App\Models\Round;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DrawController extends Controller
 {
@@ -118,5 +119,108 @@ class DrawController extends Controller
         $winner->update(['has_won' => true]);
 
         return response()->json(['draw' => $draw]);
+    }
+
+    /**
+     * Unified "Lucky Shake" jar.
+     *
+     * Pools every eligible (active, not-yet-won) slot across all active
+     * rounds into a single draw — no category/level/round filtering. The
+     * admin may shake repeatedly; each draw atomically flags the winner
+     * (has_won = true) so it is excluded from every later shake in the
+     * same round. Row locking guards against two near-simultaneous draws
+     * pulling the same slot.
+     *
+     * Privacy-first: the public response never includes the member name.
+     * Admin calls (admin/* path) may receive it for payout/audit only.
+     */
+    public function shake(Request $request)
+    {
+        $request->validate([
+            'categories' => 'nullable|array',
+            'categories.*' => 'string',
+            'round_id' => 'nullable|exists:rounds,id',
+            'is_all' => 'nullable|boolean',
+        ]);
+
+        $isAdmin = str_starts_with($request->path(), 'admin/');
+        // Default to the unified global jar. A specific category/round scope
+        // is only honored when is_all is explicitly set to false.
+        $poolScope = $request->boolean('is_all', true);
+
+        return DB::transaction(function () use ($request, $isAdmin, $poolScope) {
+            $query = Slot::query()
+                ->where('status', 'active')
+                ->where('has_won', false)
+                ->whereNotNull('round_id')
+                ->whereHas('round', fn ($q) => $q->where('status', 'active'))
+                ->with('round');
+
+            if (!$poolScope && $request->filled('categories')) {
+                $query->whereIn('category', $request->input('categories'));
+            }
+
+            if ($request->filled('round_id')) {
+                $query->where('round_id', $request->input('round_id'));
+            }
+
+            // Concurrency guard: lock the candidate rows so two concurrent
+            // draws cannot select the same slot as a winner.
+            $slots = $query->lockForUpdate()->get();
+
+            if ($slots->isEmpty()) {
+                return response()->json(['message' => 'No eligible slots'], 400);
+            }
+
+            $winner = $slots->random();
+
+            // Instant pool removal — atomically flag the drawn slot so it is
+            // excluded from every subsequent shake in the same round.
+            $winner->update(['has_won' => true]);
+
+            $round = $winner->round;
+            $roundNumber = $round?->current_round_number ?? 1;
+            $dailyAmount = $round ? (float) $round->amount : (int) $winner->category;
+            $commissionRate = $round ? (float) $round->commission_rate / 100 : 0.1;
+            $totalCollected = $dailyAmount * $slots->count();
+            $commissionAmount = $totalCollected * $commissionRate;
+            $netPayout = $totalCollected - $commissionAmount;
+
+            $draw = Draw::create([
+                'spin_id' => 'SHAKE-' . strtoupper(uniqid()),
+                'round' => $roundNumber,
+                'round_id' => $winner->round_id,
+                'category' => $winner->category,
+                'winning_slot' => $winner->slot_number,
+                'winner_name' => $winner->user?->name ?? 'Unknown', // stored for admin payout only
+                'net_payout' => $netPayout,
+                'commission_amount' => $commissionAmount,
+                'total_collected' => $totalCollected,
+                'draw_date' => now(),
+                'is_auto' => false,
+            ]);
+
+            $winnerData = [
+                'slot_id' => $winner->id,
+                'slot_number' => $winner->slot_number,
+                'category' => $winner->category,
+                'round_id' => $winner->round_id,
+                'user_id' => $winner->user_id,
+                'round_number' => $roundNumber,
+            ];
+
+            // Privacy-first: never expose the member name on the public draw
+            // response. Admin calls may receive it for payout/audit purposes.
+            if ($isAdmin) {
+                $winnerData['user_name'] = $winner->user?->name ?? 'Unknown';
+            }
+
+            return response()->json([
+                'draw' => $draw,
+                'winner' => $winnerData,
+                'winners' => [$winnerData],
+                'total_eligible' => $slots->count(),
+            ]);
+        });
     }
 }

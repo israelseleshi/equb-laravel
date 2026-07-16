@@ -123,6 +123,12 @@ class RoundController extends Controller
             return response()->json(['message' => 'Only draft rounds can be activated'], 422);
         }
 
+        if (!$round->isFull()) {
+            return response()->json([
+                'message' => "Cannot activate. Round has {$round->current_participants}/{$round->people_goal} participants. Goal must be reached first.",
+            ], 422);
+        }
+
         $round->update([
             'status' => 'active',
             'start_date' => $round->start_date ?? Carbon::today()->toDateString(),
@@ -140,6 +146,30 @@ class RoundController extends Controller
         }
 
         $round->update(['status' => 'completed']);
+
+        // Auto-spawn next cycle if it doesn't exist yet
+        $nextRoundNumber = $round->current_round_number + 1;
+        $nextExists = Round::where('category', $round->category)
+            ->where('current_round_number', $nextRoundNumber)
+            ->exists();
+
+        if (!$nextExists) {
+            Round::create([
+                'name' => $round->name . ' (Cycle ' . $nextRoundNumber . ')',
+                'category' => $round->category,
+                'amount' => $round->amount,
+                'frequency' => $round->frequency,
+                'people_goal' => $round->people_goal,
+                'current_participants' => 0,
+                'total_rounds' => $round->total_rounds,
+                'winners_per_spin' => $round->winners_per_spin,
+                'current_round_number' => $nextRoundNumber,
+                'status' => 'draft',
+                'auto_spin_enabled' => $round->auto_spin_enabled,
+                'spin_time' => $round->spin_time,
+                'commission_rate' => $round->commission_rate,
+            ]);
+        }
 
         return response()->json(['round' => $round]);
     }
@@ -161,8 +191,8 @@ class RoundController extends Controller
     {
         $round = Round::findOrFail($id);
 
-        if ($round->status !== 'active') {
-            return response()->json(['message' => 'Round is not active'], 422);
+        if (!in_array($round->status, ['draft', 'active'])) {
+            return response()->json(['message' => 'Round is not accepting enrollments'], 422);
         }
 
         if ($round->isFull()) {
@@ -193,6 +223,28 @@ class RoundController extends Controller
         ]);
 
         $round->incrementParticipants();
+
+        // If round just reached its goal → auto-activate and spawn next cycle
+        if ($round->isFull()) {
+            $round->update(['status' => 'active']);
+
+            $nextRoundNumber = $round->current_round_number + 1;
+            Round::create([
+                'name' => $round->name . ' (Cycle ' . $nextRoundNumber . ')',
+                'category' => $round->category,
+                'amount' => $round->amount,
+                'frequency' => $round->frequency,
+                'people_goal' => $round->people_goal,
+                'current_participants' => 0,
+                'total_rounds' => $round->total_rounds,
+                'winners_per_spin' => $round->winners_per_spin,
+                'current_round_number' => $nextRoundNumber,
+                'status' => 'draft',
+                'auto_spin_enabled' => $round->auto_spin_enabled,
+                'spin_time' => $round->spin_time,
+                'commission_rate' => $round->commission_rate,
+            ]);
+        }
 
         return response()->json(['slot' => $slot, 'round' => $round], 201);
     }
@@ -263,6 +315,77 @@ class RoundController extends Controller
         $winner->update(['has_won' => true]);
 
         return response()->json(['draw' => $draw, 'round' => $round]);
+    }
+
+    public function demoFill($id)
+    {
+        $round = Round::findOrFail($id);
+
+        if ($round->status !== 'draft') {
+            return response()->json(['message' => 'Only draft rounds can be demo-filled'], 422);
+        }
+
+        $existingSlots = Slot::where('round_id', $round->id)->count();
+        $needed = $round->people_goal - $existingSlots;
+
+        if ($needed > 0) {
+            $users = User::where('is_admin', false)->take($needed)->get();
+
+            if ($users->count() < $needed) {
+                // Create demo users if not enough real users exist
+                for ($i = $users->count(); $i < $needed; $i++) {
+                    $user = User::create([
+                        'name' => 'Demo User ' . ($i + 1),
+                        'phone' => '0910000' . str_pad($i + 1, 4, '0', STR_PAD_LEFT),
+                        'password' => bcrypt('demo1234'),
+                        'is_admin' => false,
+                    ]);
+                    $users->push($user);
+                }
+            }
+
+            foreach ($users as $index => $user) {
+                Slot::create([
+                    'user_id' => $user->id,
+                    'round_id' => $round->id,
+                    'category' => $round->category,
+                    'slot_number' => $existingSlots + $index + 1,
+                    'status' => 'active',
+                    'has_won' => false,
+                    'registration_date' => now()->toDateString(),
+                ]);
+            }
+        }
+
+        $round->update([
+            'current_participants' => $round->people_goal,
+            'status' => 'active',
+        ]);
+
+        $nextRoundNumber = $round->current_round_number + 1;
+        $nextExists = Round::where('category', $round->category)
+            ->where('current_round_number', $nextRoundNumber)
+            ->exists();
+
+        if (!$nextExists) {
+            Round::create([
+                'name' => $round->name . ' (Cycle ' . $nextRoundNumber . ')',
+                'category' => $round->category,
+                'amount' => $round->amount,
+                'frequency' => $round->frequency,
+                'people_goal' => $round->people_goal,
+                'current_participants' => 0,
+                'total_rounds' => $round->total_rounds,
+                'winners_per_spin' => $round->winners_per_spin,
+                'current_round_number' => $nextRoundNumber,
+                'status' => 'draft',
+                'auto_spin_enabled' => $round->auto_spin_enabled,
+                'spin_time' => $round->spin_time,
+                'commission_rate' => $round->commission_rate,
+            ]);
+        }
+
+        return response()->json(['round' => $round->fresh()]);
     }
 
     public function roundStats()

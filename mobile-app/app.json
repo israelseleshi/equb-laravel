@@ -7,10 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "ጎጆ ዕቁብ uses Face ID / fingerprint to secure your admin account with 2FA."
-      }
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {

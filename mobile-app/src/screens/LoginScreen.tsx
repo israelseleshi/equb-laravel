@@ -13,7 +13,7 @@ import {
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
-import * as LocalAuthentication from 'expo-local-authentication'
+
 import { colors, fonts } from '../theme'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -39,8 +39,6 @@ export function LoginScreen() {
   const [errors, setErrors] = useState<{ phone?: string; password?: string }>(
     {}
   )
-  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false)
-  const [biometricLoading, setBiometricLoading] = useState(false)
   const [showServerConfig, setShowServerConfig] = useState(false)
   const [serverHostInput, setServerHostInput] = useState('')
   const [savingServer, setSavingServer] = useState(false)
@@ -86,12 +84,7 @@ export function LoginScreen() {
       if (result.role === 'admin') {
         navigate('authGate')
       } else {
-        const settings = await getSettings()
-        if (!settings.biometricEnabled) {
-          setShowBiometricPrompt(true)
-        } else {
-          navigate('dashboard')
-        }
+        navigate('dashboard')
       }
     } else {
       const isConnError = result.error?.toLowerCase().includes('cannot connect') || result.error?.toLowerCase().includes('cannot reach')
@@ -100,28 +93,7 @@ export function LoginScreen() {
     }
   }
 
-  const handleEnableBiometric = useCallback(async () => {
-    setBiometricLoading(true)
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: lang === 'en' ? 'Register your fingerprint for quick login' : 'ለፈጣን መግቢያ የጣት አሻራዎን ያስመዝግቡ',
-        cancelLabel: lang === 'en' ? 'Cancel' : 'ሰርዝ',
-        disableDeviceFallback: false,
-      })
-      if (result.success) {
-        await updateSettings({ biometricEnabled: true })
-        showToast(lang === 'en' ? 'Fingerprint saved!' : 'የጣት አሻራ ተቀምጧል!', 'success')
-        setShowBiometricPrompt(false)
-        navigate('dashboard')
-      }
-    } catch {}
-    setBiometricLoading(false)
-  }, [lang, navigate, showToast])
 
-  const handleSkipBiometric = useCallback(() => {
-    setShowBiometricPrompt(false)
-    navigate('dashboard')
-  }, [navigate])
 
   return (
     <View style={styles.root}>
@@ -253,36 +225,6 @@ export function LoginScreen() {
               </Card>
         </ScrollView>
       </KeyboardAvoidingView>
-      <Modal visible={showBiometricPrompt} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalIconWrap}>
-              <Ionicons name="finger-print" size={48} color={colors.primary} />
-            </View>
-            <Text style={styles.modalTitle}>
-              {lang === 'en' ? 'Enable Fingerprint Login?' : 'የጣት አሻራ መግቢያ ይንቀሉ?'}
-            </Text>
-            <Text style={styles.modalDesc}>
-              {lang === 'en'
-                ? 'Save your fingerprint for quick login next time. You won\'t need to enter your password.'
-                : 'ለሚቀጥለው ጊዜ ፈጣን መግቢያ የጣት አሻራዎን ያስቀምጡ። የይለፍ ቃልዎን ማስገባት አያስፈልግዎትም።'}
-            </Text>
-            <Button
-              title={lang === 'en' ? 'Save Fingerprint' : 'የጣት አሻራ ያስቀምጡ'}
-              onPress={handleEnableBiometric}
-              loading={biometricLoading}
-              fullWidth
-              size="lg"
-            />
-            <TouchableOpacity onPress={handleSkipBiometric} activeOpacity={0.7} style={styles.modalSkip}>
-              <Text style={styles.modalSkipText}>
-                {lang === 'en' ? 'Not now' : 'አሁን አይደለም'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* Server Config Modal */}
       <Modal visible={showServerConfig} transparent animationType="fade">
         <View style={styles.modalOverlay}>

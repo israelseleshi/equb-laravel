@@ -5,7 +5,7 @@ This is the Equb mobile application with an Expo + TypeScript React Native front
 ## Tech Stack
 
 ### Frontend
-- **Framework:** Expo SDK 56+
+- **Framework:** Expo SDK 57+
 - **Language:** TypeScript (strict mode)
 - **UI:** React Native core components, StyleSheet
 - **Navigation:** Custom navigation context (not Expo Router)
@@ -19,17 +19,26 @@ This is the Equb mobile application with an Expo + TypeScript React Native front
 - **Testing:** Pest / PHPUnit
 - **Formatting:** Laravel Pint (PSR-12)
 
+### AI Tooling (ECC — Everything Claude Code)
+- **ECC version:** 2.0.0-rc.1 (installed at `C:\Users\Hp\ECC`)
+- **Skills:** 251 specialized skills loaded via opencode.jsonc
+- **Commands:** 80+ ECC commands (`npx ecc <command>`)
+- **Agents:** 63 specialized agents for code review, planning, TDD, security, etc.
+- **Rules:** TypeScript, React/Expo, PHP/Laravel rules linked from ECC
+
 ## Commands
 
 ```bash
 # Frontend (run from mobile-app/)
 cd mobile-app
-npm run start        # Start Expo dev server
+npm run start        # Start Expo dev server (use --tunnel if device issues)
 npm run android      # Run on Android
 npm run ios          # Run on iOS
 npm run web          # Run on Web
 npm test             # Run frontend tests
 npm run lint         # Frontend lint
+npx expo install --fix  # Fix dependency alignment
+npx expo doctor        # Verify SDK health
 
 # Backend (run from backend/)
 cd backend
@@ -37,6 +46,13 @@ composer install     # Install PHP deps
 vendor/bin/pint      # Format PHP code
 vendor/bin/phpstan   # Static analysis
 php artisan test     # Run backend tests
+
+# ECC (run from project root)
+cd ../..
+npx ecc react         # React/Expo agent assistance
+npx ecc plan          # Plan a feature
+npx ecc code-review   # Review code changes
+npx ecc security-scan # Security audit
 ```
 
 ## Coding Standards
@@ -88,6 +104,15 @@ equb/
     │   └── seeders/
     └── public/.htaccess
 ```
+
+## Expo Go — Fixing "Stalled on Old Version"
+
+If Expo Go shows version 56 on your device:
+
+1. **Update the Expo Go app** on your phone from Google Play (Android) or App Store (iOS) — you need Expo Go 2.33.0+ for SDK 57
+2. **Clear cache** on the dev server: `npx expo start -c`
+3. **Use tunnel** if on different network: `npx expo start --tunnel`
+4. **Verify** with: `npx expo doctor`
 
 ## Security
 

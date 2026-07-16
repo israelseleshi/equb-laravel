@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('payment_logs', function (Blueprint $table) {
             $table->id();
+            $table->engine('InnoDB');
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('user_name');
             $table->decimal('amount', 12, 2);

@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('rounds', function (Blueprint $table) {
             $table->id();
+            $table->engine('InnoDB');
             $table->string('name');
             $table->string('category', 20);
             $table->decimal('amount', 12, 2);

@@ -1,13 +1,13 @@
 <?php return array(
     'root' => array(
         'name' => 'equb/backend',
-        'pretty_version' => 'dev-master',
-        'version' => 'dev-master',
-        'reference' => 'b179be38bf04b7caad774168faff60e0cb75dd01',
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => 'ffd359f5b50b5affc1d1046c1766da1d62d63771',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
-        'dev' => true,
+        'dev' => false,
     ),
     'versions' => array(
         'brick/math' => array(
@@ -74,9 +74,9 @@
             'dev_requirement' => false,
         ),
         'equb/backend' => array(
-            'pretty_version' => 'dev-master',
-            'version' => 'dev-master',
-            'reference' => 'b179be38bf04b7caad774168faff60e0cb75dd01',
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => 'ffd359f5b50b5affc1d1046c1766da1d62d63771',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -348,15 +348,6 @@
             'install_path' => __DIR__ . '/../laravel/framework',
             'aliases' => array(),
             'dev_requirement' => false,
-        ),
-        'laravel/pint' => array(
-            'pretty_version' => 'v1.29.3',
-            'version' => '1.29.3.0',
-            'reference' => 'da1d1111a6aa2e082d2a388b194afe1ba0a05d14',
-            'type' => 'project',
-            'install_path' => __DIR__ . '/../laravel/pint',
-            'aliases' => array(),
-            'dev_requirement' => true,
         ),
         'laravel/prompts' => array(
             'pretty_version' => 'v0.3.21',

@@ -71,11 +71,10 @@ return array(
     'Doctrine\\Inflector\\' => array($vendorDir . '/doctrine/inflector/src'),
     'Doctrine\\Common\\Lexer\\' => array($vendorDir . '/doctrine/lexer/src'),
     'Dflydev\\DotAccessData\\' => array($vendorDir . '/dflydev/dot-access-data/src'),
-    'Database\\Seeders\\' => array($baseDir . '/database/seeders', $vendorDir . '/laravel/pint/database/seeders'),
-    'Database\\Factories\\' => array($vendorDir . '/laravel/pint/database/factories'),
+    'Database\\Seeders\\' => array($baseDir . '/database/seeders'),
     'Cron\\' => array($vendorDir . '/dragonmantank/cron-expression/src/Cron'),
     'Carbon\\Doctrine\\' => array($vendorDir . '/carbonphp/carbon-doctrine-types/src/Carbon/Doctrine'),
     'Carbon\\' => array($vendorDir . '/nesbot/carbon/src/Carbon'),
     'Brick\\Math\\' => array($vendorDir . '/brick/math/src'),
-    'App\\' => array($baseDir . '/app', $vendorDir . '/laravel/pint/app'),
+    'App\\' => array($baseDir . '/app'),
 );

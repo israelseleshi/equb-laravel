@@ -10,7 +10,7 @@ class Round extends Model
         'name', 'category', 'amount', 'frequency', 'people_goal',
         'current_participants', 'total_rounds', 'winners_per_spin',
         'current_round_number', 'start_date', 'end_date', 'status',
-        'auto_spin_enabled',
+        'auto_spin_enabled', 'last_auto_draw_at',
         'spin_time', 'commission_rate', 'metadata',
     ];
 
@@ -22,6 +22,7 @@ class Round extends Model
             'start_date' => 'date',
             'end_date' => 'date',
             'auto_spin_enabled' => 'boolean',
+            'last_auto_draw_at' => 'datetime',
             'metadata' => 'array',
         ];
     }

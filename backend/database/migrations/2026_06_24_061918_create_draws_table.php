@@ -10,8 +10,9 @@ return new class extends Migration
     {
         Schema::create('draws', function (Blueprint $table) {
             $table->id();
+            $table->engine('InnoDB');
             $table->string('spin_id')->unique();
-            $table->integer('round');
+            $table->string('round');
             $table->string('category', 20);
             $table->integer('winning_slot');
             $table->string('winner_name');

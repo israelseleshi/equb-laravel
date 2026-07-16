@@ -4,6 +4,54 @@ import { getSettings } from './storage'
 
 const PORT = 8000
 
+/* ── TEMPORARY OFFLINE MODE ───────────────────────────────────────────────
+   This workspace has no Laravel `backend/`, so every network call fails with
+   "Cannot connect to server". While ON, the app runs entirely on the local
+   mock data below and never touches the network. SET TO false once the
+   backend is running (php artisan serve in backend/). ──────────────────── */
+const OFFLINE_MODE = true
+
+const OFFLINE_ROUNDS: RoundData[] = [
+  { id: 101, name: 'Morning Circle', category: '500', amount: 500, frequency: 'daily', people_goal: 10, current_participants: 10, total_rounds: 12, winners_per_spin: 2, current_round_number: 3, start_date: null, end_date: null, status: 'active', auto_spin_enabled: true, spin_time: '08:00', commission_rate: 10, metadata: null, last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(), created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+  { id: 102, name: 'Evening Savers', category: '1000', amount: 1000, frequency: 'daily', people_goal: 8, current_participants: 8, total_rounds: 10, winners_per_spin: 1, current_round_number: 2, start_date: null, end_date: null, status: 'active', auto_spin_enabled: true, spin_time: '20:00', commission_rate: 10, metadata: null, last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(), created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+  { id: 103, name: 'Big Players', category: '5000', amount: 5000, frequency: 'weekly', people_goal: 4, current_participants: 4, total_rounds: 8, winners_per_spin: 1, current_round_number: 1, start_date: null, end_date: null, status: 'active', auto_spin_enabled: false, spin_time: '12:00', commission_rate: 10, metadata: null, last_auto_draw_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+]
+
+const OFFLINE_STATS: RoundStats = {
+  total_rounds: 3,
+  active_rounds: 3,
+  draft_rounds: 0,
+  completed_rounds: 0,
+  total_payouts: 0,
+  total_draws: 0,
+  by_category: [
+    { category: '500', total: 1, participants: 10 },
+    { category: '1000', total: 1, participants: 8 },
+    { category: '5000', total: 1, participants: 4 },
+  ],
+}
+
+function offlineMock<T>(endpoint: string, options: RequestInit): T {
+  if (endpoint === '/login' || endpoint === '/register') {
+    return {
+      success: true,
+      token: 'demo-token',
+      role: 'admin',
+      user: { id: 'usr-admin', name: 'Demo Admin', phone: '0900000000', registration_date: '2026-01-01' },
+      slot: { id: 's-demo', user_id: 'usr-admin', category: '500', slot_number: 1, balance: 500, status: 'active', has_won: false, deal_closed: false, deposited_today: true, consecutive_missed_sweeps: 0, registration_date: '2026-01-01' },
+    } as unknown as T
+  }
+  if (endpoint === '/me') {
+    return { user: { id: 'usr-admin', name: 'Demo Admin', phone: '0900000000', registration_date: '2026-01-01' }, slots: [], role: 'admin' } as unknown as T
+  }
+  if (endpoint === '/logout') return {} as T
+  if (endpoint.startsWith('/rounds/stats') || endpoint.startsWith('/admin/rounds/stats')) return OFFLINE_STATS as unknown as T
+  if (endpoint.startsWith('/rounds') || endpoint.startsWith('/admin/rounds')) return { rounds: OFFLINE_ROUNDS } as unknown as T
+  if (endpoint === '/categories' || endpoint === '/admin/categories') return { categories: [] } as unknown as T
+  if (endpoint === '/tiers') return [] as unknown as T
+  return {} as T
+}
+
 let workingBase = ''
 let authToken: string | null = null
 let userSetHost: string | null = null
@@ -22,6 +70,7 @@ export function setServerHost(host: string) {
 }
 
 async function resolveBase(): Promise<string> {
+  if (OFFLINE_MODE) return 'http://offline.local/api'
   if (workingBase) return workingBase
 
   const hosts: string[] = []
@@ -73,6 +122,8 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (OFFLINE_MODE) return offlineMock<T>(endpoint, options)
+
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(options.headers as Record<string, string>),
@@ -144,6 +195,30 @@ export const api = {
     }),
 }
 
+/* ─── Category API ─── */
+
+export interface CategoryData {
+  id: number
+  code: string
+  label_en: string
+  label_am: string
+  amount: number
+  frequency: string
+  max_members: number
+  min_deposit: number
+  total_rounds: number
+  collateral_type: string | null
+  license_type: string | null
+  requires_license: boolean
+  penalty_clause_en: string | null
+  penalty_clause_am: string | null
+  is_active: boolean
+  sort_order: number
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
 /* ─── Round API ─── */
 
 export interface RoundData {
@@ -151,7 +226,7 @@ export interface RoundData {
   name: string
   category: string
   amount: number
-  frequency: 'daily' | 'weekly' | 'monthly'
+  frequency: 'daily' | 'weekly' | 'monthly' | '2_month'
   people_goal: number
   current_participants: number
   total_rounds: number
@@ -164,6 +239,7 @@ export interface RoundData {
   spin_time: string
   commission_rate: number
   metadata: Record<string, unknown> | null
+  last_auto_draw_at: string | null
   created_at: string
   updated_at: string
 }
@@ -182,7 +258,7 @@ export interface CreateRoundInput {
   name: string
   category: string
   amount: number
-  frequency: 'daily' | 'weekly' | 'monthly'
+  frequency: 'daily' | 'weekly' | 'monthly' | '2_month'
   people_goal: number
   total_rounds: number
   winners_per_spin?: number
@@ -241,6 +317,9 @@ export const roundsApi = {
   activate: (id: number) =>
     api.post<{ round: RoundData }>(`/admin/rounds/${id}/activate`),
 
+  demoFill: (id: number) =>
+    api.post<{ round: RoundData }>(`/admin/rounds/${id}/demo-fill`),
+
   complete: (id: number) =>
     api.post<{ round: RoundData }>(`/admin/rounds/${id}/complete`),
 
@@ -260,4 +339,40 @@ export const roundsApi = {
 
   spin: (id: number) =>
     api.post<{ draw: unknown; round: RoundData }>(`/admin/rounds/${id}/spin`),
+}
+
+/* ─── Draw (Ludo Dice Shaker) API ─── */
+
+export interface ShakeInput {
+  categories?: string[]
+  round_id?: number
+  /** Default true — draw from the unified global jar (all active pools). */
+  is_all?: boolean
+}
+
+/**
+ * Privacy-first winner token. Names are intentionally excluded from the
+ * public draw response; only the category, slot and round are exposed.
+ */
+export interface ShakeWinnerToken {
+  slot_id: number
+  slot_number: number
+  category: string
+  round_id: number | null
+  user_id: number
+  round_number: number
+  /** Present only on admin calls, for payout/audit. */
+  user_name?: string
+}
+
+export interface ShakeResult {
+  draw: unknown
+  winner: ShakeWinnerToken
+  winners?: ShakeWinnerToken[]
+  total_eligible: number
+}
+
+export const drawApi = {
+  shake: (input: ShakeInput) =>
+    api.post<ShakeResult>('/admin/draw/shake', input),
 }

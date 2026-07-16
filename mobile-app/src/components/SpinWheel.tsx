@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { View, StyleSheet, Animated, Easing } from 'react-native'
 import Svg, { G, Path, Text as SvgText, Circle, Polygon } from 'react-native-svg'
 import { colors } from '../theme'
@@ -14,10 +14,13 @@ export interface SpinWheelHandle {
 }
 
 interface SpinWheelProps {
+  sectors?: Sector[]
+  totalSectors?: number
+  sectorLabels?: string[]
   onSpinEnd?: () => void
 }
 
-const SECTORS: Sector[] = [
+const DEFAULT_SECTORS: Sector[] = [
   { label: '1-100', fill: '#0F4C3A' },
   { label: '101-200', fill: '#0B261E' },
   { label: '201-300', fill: '#1B725A' },
@@ -30,8 +33,12 @@ const SECTORS: Sector[] = [
   { label: '901-1000', fill: '#E6B022' },
 ]
 
-const TOTAL = SECTORS.length
-const SECTOR_ANGLE = 360 / TOTAL
+const WHEEL_PALETTE = [
+  '#0F4C3A', '#0B261E', '#1B725A', '#E6B022', '#065f46',
+  '#047857', '#059669', '#34d399', '#0ea5e9', '#8b5cf6',
+  '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6',
+]
+
 const SIZE = 220
 const RADIUS = SIZE / 2 - 6
 const CENTER = SIZE / 2
@@ -54,13 +61,27 @@ function SectorPath({ index, total, radius, center }: { index: number; total: nu
 const GOLD = '#E6B022'
 const DARK_GREEN = '#1B725A'
 
-export const SpinWheel = forwardRef<SpinWheelHandle, SpinWheelProps>(function SpinWheel({ onSpinEnd }, ref) {
+export const SpinWheel = forwardRef<SpinWheelHandle, SpinWheelProps>(function SpinWheel({ sectors, totalSectors, sectorLabels, onSpinEnd }, ref) {
   const rotation = useRef(new Animated.Value(0)).current
   const isAnimating = useRef(false)
 
+  const activeSectors = useMemo(() => {
+    if (sectors && sectors.length > 0) return sectors
+    if (totalSectors && totalSectors > 0) {
+      return Array.from({ length: totalSectors }, (_, i) => ({
+        label: sectorLabels?.[i] ?? `Slot ${i + 1}`,
+        fill: WHEEL_PALETTE[i % WHEEL_PALETTE.length],
+      }))
+    }
+    return DEFAULT_SECTORS
+  }, [sectors, totalSectors, sectorLabels])
+
+  const total = activeSectors.length
+  const sectorAngle = 360 / total
+
   const animateToSlot = useCallback((slotNumber: number) => {
-    const targetSector = Math.min(Math.max(Math.floor((slotNumber - 1) / 100), 0), TOTAL - 1)
-    const baseAngle = 270 - targetSector * SECTOR_ANGLE - SECTOR_ANGLE / 2
+    const targetSector = Math.min(Math.max(slotNumber - 1, 0), total - 1)
+    const baseAngle = 270 - targetSector * sectorAngle - sectorAngle / 2
     const fullSpins = 1800
     const target = baseAngle + fullSpins
     isAnimating.current = true
@@ -74,7 +95,7 @@ export const SpinWheel = forwardRef<SpinWheelHandle, SpinWheelProps>(function Sp
       isAnimating.current = false
       onSpinEnd?.()
     })
-  }, [rotation, onSpinEnd])
+  }, [rotation, onSpinEnd, total, sectorAngle])
 
   useImperativeHandle(ref, () => ({
     spin: (slotNumber: number) => {
@@ -95,19 +116,19 @@ export const SpinWheel = forwardRef<SpinWheelHandle, SpinWheelProps>(function Sp
           <View style={styles.wheelInner}>
             <Animated.View style={{ transform: [{ rotate: spinInterpolation }] }}>
               <Svg width={SIZE - 24} height={SIZE - 24} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-                {SECTORS.map((s, i) => (
+                {activeSectors.map((s, i) => (
                   <G key={i}>
                     <Path
-                      d={SectorPath({ index: i, total: TOTAL, radius: RADIUS, center: CENTER })}
+                      d={SectorPath({ index: i, total, radius: RADIUS, center: CENTER })}
                       fill={s.fill}
                       stroke="rgba(255,255,255,0.15)"
                       strokeWidth="0.5"
                     />
                     <SvgText
-                      x={CENTER + RADIUS * 0.68 * Math.cos(((i * SECTOR_ANGLE + SECTOR_ANGLE / 2 - 90) * Math.PI) / 180)}
-                      y={CENTER + RADIUS * 0.68 * Math.sin(((i * SECTOR_ANGLE + SECTOR_ANGLE / 2 - 90) * Math.PI) / 180)}
+                      x={CENTER + RADIUS * 0.68 * Math.cos(((i * sectorAngle + sectorAngle / 2 - 90) * Math.PI) / 180)}
+                      y={CENTER + RADIUS * 0.68 * Math.sin(((i * sectorAngle + sectorAngle / 2 - 90) * Math.PI) / 180)}
                       fill="#fff"
-                      fontSize="8"
+                      fontSize={total > 8 ? '6' : '8'}
                       fontWeight="700"
                       textAnchor="middle"
                       alignmentBaseline="middle"
@@ -176,6 +197,9 @@ export function SpinResultCard({ result }: { result: { slots: number[]; amount: 
     </View>
   )
 }
+
+export { WHEEL_PALETTE }
+export type { Sector }
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center', width: '100%' },

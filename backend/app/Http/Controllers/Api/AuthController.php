@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Slot;
+use App\Models\PromoCode;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -21,6 +24,7 @@ class AuthController extends Controller
             'fayda_id' => 'nullable|string|max:20',
             'work_address' => 'nullable|string|max:255',
             'category' => 'required|string|in:500,1000,2000,5000,savings',
+            'promo_code' => 'nullable|string|max:20|exists:promo_codes,code',
         ]);
 
         $user = User::create([
@@ -30,10 +34,20 @@ class AuthController extends Controller
             'password' => Hash::make($validated['password']),
             'fayda_id' => $validated['fayda_id'] ?? null,
             'work_address' => $validated['work_address'] ?? null,
+            'promo_code' => $validated['promo_code'] ?? null,
             'role' => 'member',
             'status' => 'active',
             'registration_date' => now()->toDateString(),
         ]);
+
+        // Auto-credit broker commission if promo code used
+        if (!empty($validated['promo_code'])) {
+            $promo = PromoCode::where('code', $validated['promo_code'])->first();
+            if ($promo && $promo->isActive()) {
+                $commissionBase = (int) $validated['category'];
+                $promo->incrementRegistrations($commissionBase);
+            }
+        }
 
         $slots = Slot::where('category', $validated['category'])->count();
         $slot = Slot::create([
@@ -120,29 +134,41 @@ class AuthController extends Controller
             return response()->json(['message' => 'If this phone exists, a reset code was sent'], 200);
         }
 
-        // In production, send SMS via 3rd party. For now, return a mock OTP.
-        $otp = '4921';
+        $otp = (string) random_int(100000, 999999);
 
-        return response()->json([
-            'message' => 'Reset code sent to your phone',
+        Cache::put("otp_{$request->phone}", [
             'otp' => $otp,
-        ]);
+            'expires_at' => now()->addMinutes(10),
+        ], 600);
+
+        $sms = new SmsService;
+        $sms->sendOtp($request->phone, $otp);
+
+        return response()->json(['message' => 'Reset code sent to your phone']);
     }
 
     public function verifyOtp(Request $request)
     {
         $request->validate([
             'phone' => 'required|string',
-            'otp' => 'required|string|size:4',
+            'otp' => 'required|string|size:6',
         ]);
 
-        // In production, verify against stored OTP.
-        if ($request->otp !== '4921') {
-            return response()->json(['message' => 'Invalid code'], 422);
+        $stored = Cache::get("otp_{$request->phone}");
+
+        if (!$stored || $stored['otp'] !== $request->otp) {
+            return response()->json(['message' => 'Invalid or expired code'], 422);
         }
 
-        // Generate a reset token
+        if (now()->greaterThan($stored['expires_at'])) {
+            Cache::forget("otp_{$request->phone}");
+            return response()->json(['message' => 'Code expired, request a new one'], 422);
+        }
+
+        Cache::forget("otp_{$request->phone}");
+
         $resetToken = bin2hex(random_bytes(32));
+        Cache::put("reset_token_{$request->phone}", $resetToken, 300);
 
         return response()->json([
             'message' => 'OTP verified',
@@ -158,6 +184,11 @@ class AuthController extends Controller
             'reset_token' => 'required|string',
         ]);
 
+        $storedToken = Cache::get("reset_token_{$request->phone}");
+        if (!$storedToken || $storedToken !== $request->reset_token) {
+            return response()->json(['message' => 'Invalid or expired reset token'], 422);
+        }
+
         $user = User::where('phone', $request->phone)->first();
         if (!$user) {
             return response()->json(['message' => 'User not found'], 404);
@@ -166,6 +197,9 @@ class AuthController extends Controller
         $user->password = Hash::make($request->password);
         $user->save();
 
+        Cache::forget("reset_token_{$request->phone}");
+
         return response()->json(['message' => 'Password reset successfully']);
     }
+
 }

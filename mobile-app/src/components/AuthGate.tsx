@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { View, StyleSheet, TouchableOpacity, Animated } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import * as LocalAuthentication from 'expo-local-authentication'
 import { colors, spacing } from '../theme'
 import { Text } from './ui/AppText'
 import { useTranslation } from '../i18n/useTranslation'
-import { getSettings } from '../services/storage'
 
 const MAX_FAILED_ATTEMPTS = 3
 const LOCKOUT_DURATION_SECONDS = 30
@@ -14,10 +12,9 @@ const CORRECT_PASSCODE = '123456'
 interface AuthGateProps {
   onSuccess: () => void
   onCancel: () => void
-  onEnrollBiometric: () => void
 }
 
-export function AuthGate({ onSuccess, onCancel, onEnrollBiometric }: AuthGateProps) {
+export function AuthGate({ onSuccess, onCancel }: AuthGateProps) {
   const { t, lang } = useTranslation()
   const [pin, setPin] = useState<string[]>(Array(6).fill(''))
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -56,25 +53,9 @@ export function AuthGate({ onSuccess, onCancel, onEnrollBiometric }: AuthGatePro
     ]).start()
   }, [shakeAnim])
 
-  const handlePasscodeSuccess = useCallback(async () => {
-    try {
-      const settings = await getSettings()
-      if (settings.biometricEnabled) {
-        const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: lang === 'en' ? 'Authenticate to unlock' : 'ለመክፈት ያረጋግጡ',
-          cancelLabel: lang === 'en' ? 'Cancel' : 'ሰርዝ',
-          disableDeviceFallback: false,
-        })
-        if (result.success) {
-          onSuccess()
-        }
-      } else {
-        onEnrollBiometric()
-      }
-    } catch {
-      onEnrollBiometric()
-    }
-  }, [lang, onSuccess, onEnrollBiometric])
+  const handlePasscodeSuccess = useCallback(() => {
+    onSuccess()
+  }, [onSuccess])
 
   const handleDigit = useCallback((digit: string) => {
     if (lockoutEnd !== null && Date.now() < lockoutEnd) return

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "instructions": [
+    "AGENTS.md",
+    ".agents/skills/laravel-patterns/SKILL.md",
+    ".agents/skills/laravel-security/SKILL.md",
+    ".agents/skills/laravel-tdd/SKILL.md",
+    ".agents/skills/laravel-verification/SKILL.md",
+    ".agents/skills/laravel-plugin-discovery/SKILL.md"
+  ],
+  "skills": {
+    "paths": [".agents/skills"]
+  },
+  "permission": {
+    "mcp_*": "ask"
+  }
+}

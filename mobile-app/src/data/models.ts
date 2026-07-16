@@ -86,7 +86,6 @@ export interface AppSettings {
   apiToken?: string
   currentSessionUserId?: string
   currentSessionUserRole?: 'member' | 'admin'
-  biometricEnabled?: boolean
   lockPassword?: string
   serverHost?: string
 }

@@ -27,6 +27,7 @@
     23 => 'Laravel\\Sanctum\\SanctumServiceProvider',
     24 => 'Carbon\\Laravel\\ServiceProvider',
     25 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    26 => 'App\\Providers\\EventServiceProvider',
   ),
   'eager' => 
   array (
@@ -43,6 +44,7 @@
     10 => 'Laravel\\Sanctum\\SanctumServiceProvider',
     11 => 'Carbon\\Laravel\\ServiceProvider',
     12 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    13 => 'App\\Providers\\EventServiceProvider',
   ),
   'deferred' => 
   array (
