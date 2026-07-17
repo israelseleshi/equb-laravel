@@ -39,3 +39,31 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+.aider*
+
+# ── Project: deploy artifacts & local scripts ──────────────
+*.zip
+*.log
+*.bat
+*.sh
+backend-server.log
+backend-deploy.zip
+backend-full-deploy.zip
+
+# SQL scratch probes (schema reference like migrate.sql is kept)
+check_roundid.sql
+check_users.sql
+users_check.sql
+cleanup_rounds.sql
+fix_roundid.sql
+table_creation_plan.md
+
+# Local backend env / DB (secrets + seeded local data)
+backend/.env
+backend/.env.*
+backend/database/*.sqlite
+backend/database/database.sqlite
+
+# Laravel logs & caches (kept out of root too)
+backend/storage/logs/*.log
+backend/vendor/

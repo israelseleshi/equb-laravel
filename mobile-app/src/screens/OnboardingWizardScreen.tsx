@@ -473,7 +473,7 @@ export function OnboardingWizardScreen() {
           style={styles.headerGradient}
         >
           <View style={styles.headerTop}>
-            <TouchableOpacity onPress={step === 0 ? () => navigate('login') : goBack} style={styles.backBtn} activeOpacity={0.7}>
+            <TouchableOpacity onPress={step === 0 ? () => navigate('portal') : goBack} style={styles.backBtn} activeOpacity={0.7}>
               <Ionicons name="arrow-back" size={22} color="#fff" />
             </TouchableOpacity>
             <TouchableOpacity onPress={toggleLanguage} style={styles.langToggle} activeOpacity={0.7}>

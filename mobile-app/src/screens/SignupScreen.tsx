@@ -110,7 +110,7 @@ export function SignupScreen() {
       >
         <View style={styles.headerTop}>
           <TouchableOpacity
-            onPress={() => navigate('login')}
+            onPress={() => navigate('portal')}
             style={styles.backBtn}
             activeOpacity={0.7}
           >

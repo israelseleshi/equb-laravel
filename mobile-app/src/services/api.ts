@@ -2,14 +2,17 @@ import { Platform } from 'react-native'
 import Constants from 'expo-constants'
 import { getSettings } from './storage'
 
-const PORT = 8000
+const PORT = 8080
 
 /* ── TEMPORARY OFFLINE MODE ───────────────────────────────────────────────
    This workspace has no Laravel `backend/`, so every network call fails with
    "Cannot connect to server". While ON, the app runs entirely on the local
    mock data below and never touches the network. SET TO false once the
    backend is running (php artisan serve in backend/). ──────────────────── */
-const OFFLINE_MODE = true
+const OFFLINE_MODE = false
+
+// Production API endpoint (Laravel backend on cPanel).
+const PROD_API_URL = 'https://api.charismahand.com/api'
 
 const OFFLINE_ROUNDS: RoundData[] = [
   { id: 101, name: 'Morning Circle', category: '500', amount: 500, frequency: 'daily', people_goal: 10, current_participants: 10, total_rounds: 12, winners_per_spin: 2, current_round_number: 3, start_date: null, end_date: null, status: 'active', auto_spin_enabled: true, spin_time: '08:00', commission_rate: 10, metadata: null, last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(), created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
@@ -72,6 +75,15 @@ export function setServerHost(host: string) {
 async function resolveBase(): Promise<string> {
   if (OFFLINE_MODE) return 'http://offline.local/api'
   if (workingBase) return workingBase
+
+  // Production API is the primary target; verify it answers, else fall back to LAN detect.
+  try {
+    const res = await fetch(`${PROD_API_URL}/tiers`, { method: 'GET' })
+    if (res.ok || res.status === 401 || res.status === 404) {
+      workingBase = PROD_API_URL
+      return workingBase
+    }
+  } catch {}
 
   const hosts: string[] = []
 
@@ -375,4 +387,228 @@ export interface ShakeResult {
 export const drawApi = {
   shake: (input: ShakeInput) =>
     api.post<ShakeResult>('/admin/draw/shake', input),
+}
+
+/* ─── Admin API ─── */
+
+export interface AdminMember {
+  id: number
+  name: string
+  phone: string
+  email: string | null
+  role: string
+  status: string
+  registration_date: string
+  created_at: string
+  slots?: AdminSlot[]
+}
+
+export interface AdminSlot {
+  id: number
+  user_id: number
+  round_id: number | null
+  category: string
+  slot_number: number
+  status: 'active' | 'lien'
+  balance: number
+  consecutive_missed_sweeps: number
+  deposited_today: boolean
+  has_won: boolean
+  unique_payment_code: string | null
+  payout_code: string | null
+  registration_date: string
+}
+
+export interface AdminDraw {
+  id: number
+  spin_id: string
+  round: string
+  round_id: number | null
+  category: string
+  winning_slot: number
+  winner_name: string
+  net_payout: number
+  commission_amount: number
+  total_collected: number
+  draw_date: string
+  is_auto: boolean
+  created_at: string
+}
+
+export interface AdminPaymentLog {
+  id: number
+  user_id: number
+  user_name: string
+  amount: number
+  status: 'success' | 'failed'
+  payment_gateway: string | null
+  trans_ref: string | null
+  created_at: string
+  user?: { name: string; phone: string }
+}
+
+export interface AdminStats {
+  total_users: number
+  total_slots: number
+  active_slots: number
+  lien_slots: number
+  total_balance: number
+  total_payouts: number
+  delinquent_slots: number
+  slots_by_category: Array<{ category: string; total: number; balance: number }>
+  active_rounds: number
+  total_rounds: number
+}
+
+export interface AdminPromoCode {
+  id: number
+  code: string
+  broker_name: string
+  broker_phone: string
+  commission_rate: number
+  total_registrations: number
+  total_earned: number
+  status: string
+  created_at: string
+}
+
+export interface AdminPromoStats {
+  total_brokers: number
+  active_brokers: number
+  total_registrations: number
+  total_paid_out: number
+  registrations_today: number
+}
+
+export interface MemberDetail {
+  id: number
+  name: string
+  phone: string
+  email: string | null
+  role: string
+  status: string
+  registration_date: string
+  created_at: string
+  slots: AdminSlot[]
+}
+
+export const adminApi = {
+  stats: () =>
+    api.get<AdminStats>('/admin/stats'),
+
+  members: (params?: { search?: string; category?: string; page?: number }) => {
+    const query = params ? '?' + Object.entries(params)
+      .filter(([_, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&') : ''
+    return api.get<{ members: { data: AdminMember[]; current_page: number; last_page: number; total: number } }>(`/admin/members${query}`)
+  },
+
+  memberDetail: (id: number) =>
+    api.get<{ member: MemberDetail }>(`/admin/members/${id}`),
+
+  winners: (params?: { category?: string; round?: string; page?: number }) => {
+    const query = params ? '?' + Object.entries(params)
+      .filter(([_, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&') : ''
+    return api.get<{ winners: { data: AdminDraw[]; current_page: number; last_page: number; total: number } }>(`/admin/winners${query}`)
+  },
+
+  payments: (params?: { status?: string; page?: number }) => {
+    const query = params ? '?' + Object.entries(params)
+      .filter(([_, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&') : ''
+    return api.get<{ payments: { data: AdminPaymentLog[]; current_page: number; last_page: number; total: number } }>(`/admin/payments${query}`)
+  },
+
+  runDraw: (category: string) =>
+    api.post<{ draw: AdminDraw }>('/admin/draw', { category }),
+
+  payout: (drawId: number, password: string) =>
+    api.post<{ message: string; draw: AdminDraw }>('/admin/payout', { draw_id: drawId, password }),
+
+  promos: () =>
+    api.get<{ promo_codes: AdminPromoCode[] }>('/admin/promos'),
+
+  promosStats: () =>
+    api.get<AdminPromoStats>('/admin/promos/stats'),
+
+  createPromo: (data: { broker_name: string; broker_phone: string; commission_rate?: number }) =>
+    api.post<{ promo_code: AdminPromoCode }>('/admin/promos', data),
+
+  updatePromo: (id: number, data: Partial<{ broker_name: string; broker_phone: string; commission_rate: number; status: string }>) =>
+    api.put<{ promo_code: AdminPromoCode }>(`/admin/promos/${id}`, data),
+
+  deletePromo: (id: number) =>
+    api.delete<{ message: string }>(`/admin/promos/${id}`),
+
+  updateSettings: (key: string, value: unknown) =>
+    api.post<{ setting: unknown }>('/admin/settings', { key, value }),
+}
+
+/* ─── Member API ─── */
+
+export interface MemberPayment {
+  id: number
+  slot_id: number
+  day_index: number
+  date: string
+  amount: number
+  status: 'unpaid' | 'paid'
+  trans_ref: string | null
+  method: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MemberSavingTransaction {
+  id: number
+  user_id: number
+  slot_id: number
+  type: 'deposit' | 'withdrawal'
+  amount: number
+  commission: number
+  net_amount: number
+  trans_ref: string
+  method: string
+  created_at: string
+}
+
+export interface MemberSavings {
+  balance: number
+  total_deposits: number
+  total_withdrawn: number
+  deposits: MemberSavingTransaction[]
+  withdrawals: MemberSavingTransaction[]
+}
+
+export const memberApi = {
+  slots: () =>
+    api.get<{ slots: AdminSlot[] }>('/slots'),
+
+  payments: (slotId: number) =>
+    api.get<{ payments: MemberPayment[]; slot: AdminSlot }>(`/payments/${slotId}`),
+
+  payDay: (slotId: number, dayIndex: number) =>
+    api.post<{ payment: MemberPayment }>('/payments/pay', { slot_id: slotId, day_index: dayIndex }),
+
+  payMultiple: (slotId: number, dayIndices: number[]) =>
+    api.post<{ payments: MemberPayment[] }>('/payments/pay-multiple', { slot_id: slotId, day_indices: dayIndices }),
+
+  receipt: (paymentId: number) =>
+    api.get<{ payment: MemberPayment & { slot: AdminSlot; user: { name: string } } }>(`/payments/receipt/${paymentId}`),
+
+  savings: (slotId: number) =>
+    api.get<MemberSavings>(`/savings/${slotId}`),
+
+  deposit: (slotId: number, amount: number) =>
+    api.post<{ transaction: MemberSavingTransaction }>('/savings/deposit', { slot_id: slotId, amount }),
+
+  withdraw: (slotId: number) =>
+    api.post<{ success: boolean; transaction: MemberSavingTransaction; commission: number; net_amount: number }>('/savings/withdraw', { slot_id: slotId }),
+
+  statement: (slotId: number) =>
+    api.get<{ transactions: MemberSavingTransaction[] }>(`/savings/statement/${slotId}`),
 }

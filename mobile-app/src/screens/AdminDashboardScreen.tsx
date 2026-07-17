@@ -10,7 +10,6 @@ import {
   Animated,
   Platform,
   LayoutAnimation,
-  UIManager,
   useWindowDimensions,
   Alert,
 } from 'react-native'
@@ -21,7 +20,7 @@ import Svg, { Circle } from 'react-native-svg'
 import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
 import * as Linking from 'expo-linking'
-import { colors, fonts } from '../theme'
+import { colors, fonts, spacing } from '../theme'
 import { Card } from '../components/ui/Card'
 import { PaginationBar } from '../components/ui/PaginationBar'
 import { Text } from '../components/ui/AppText'
@@ -31,92 +30,9 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import { getCategoryConfig, CATEGORY_CODES } from '../data/tierConfig'
 import { MemberDetailModal } from '../components/admin/MemberDetailModal'
-import { api, roundsApi, type RoundData, type RoundStats, type CreateRoundInput } from '../services/api'
+import { api, roundsApi, adminApi, type RoundData, type RoundStats, type CreateRoundInput, type AdminStats, type AdminMember, type AdminSlot, type AdminDraw, type AdminPaymentLog, type AdminPromoCode, type AdminPromoStats } from '../services/api'
 import { updateSettings } from '../services/storage'
 import { useEqubStore } from '../store/equbStore'
-
-/* ─── Mock Data ─── */
-
-interface User {
-  id: string
-  name: string
-  phone: string
-  joinedAt: string
-}
-
-interface Slot {
-  id: string
-  userId: string
-  category: string
-  slotNumber: number
-  status: 'active' | 'lien'
-  balance: number
-  consecutiveMissedSweeps: number
-  depositedToday: boolean
-}
-
-interface Draw {
-  spinId: string
-  category: string
-  winningSlot: number
-  winnerName?: string
-  netPayout: number
-  timestamp: string
-  round: number
-}
-
-interface PaymentLog {
-  id: string
-  userId: string
-  userName: string
-  amount: number
-  status: 'success' | 'failed'
-  paymentGateway: string
-  timestamp: string
-}
-
-const MOCK_USERS: User[] = [
-  { id: 'usr-1', name: 'Abebe Kebede', phone: '0911111111', joinedAt: '2026-01-15' },
-  { id: 'usr-2', name: 'Almaz Tadesse', phone: '0922222222', joinedAt: '2026-01-20' },
-  { id: 'usr-3', name: 'Lemma Hailu', phone: '0933333333', joinedAt: '2026-02-01' },
-  { id: 'usr-4', name: 'Tigist Wondimu', phone: '0944444444', joinedAt: '2026-02-10' },
-  { id: 'usr-5', name: 'Biruk Alemu', phone: '0955555555', joinedAt: '2026-03-01' },
-  { id: 'usr-6', name: 'Meron Getachew', phone: '0966666666', joinedAt: '2026-03-15' },
-  { id: 'usr-7', name: 'Henok Desta', phone: '0977777777', joinedAt: '2026-04-01' },
-  { id: 'usr-8', name: 'Sara Tekle', phone: '0988888888', joinedAt: '2026-04-10' },
-  { id: 'usr-9', name: 'Yonas Ayele', phone: '0999999999', joinedAt: '2026-05-01' },
-  { id: 'usr-10', name: 'Hiwot Girma', phone: '0900000000', joinedAt: '2026-05-15' },
-]
-
-const MOCK_SLOTS: Slot[] = [
-  ...Array.from({ length: 8 }, (_, i) => ({ id: `s500-${i}`, userId: `usr-${(i % 10) + 1}`, category: '500', slotNumber: i + 1, status: 'active' as const, balance: 500, consecutiveMissedSweeps: 0, depositedToday: true })),
-  ...Array.from({ length: 6 }, (_, i) => ({ id: `s1000-${i}`, userId: `usr-${((i + 3) % 10) + 1}`, category: '1000', slotNumber: i + 1, status: 'active' as const, balance: 2000, consecutiveMissedSweeps: 0, depositedToday: true })),
-  ...Array.from({ length: 4 }, (_, i) => ({ id: `s2000-${i}`, userId: `usr-${((i + 6) % 10) + 1}`, category: '2000', slotNumber: i + 1, status: 'active' as const, balance: 4000, consecutiveMissedSweeps: i === 0 ? 2 : 0, depositedToday: i === 0 ? false : true })),
-  ...Array.from({ length: 3 }, (_, i) => ({ id: `s5000-${i}`, userId: `usr-${((i + 9) % 10) + 1}`, category: '5000', slotNumber: i + 1, status: i === 1 ? 'lien' as const : 'active' as const, balance: 10000, consecutiveMissedSweeps: i === 1 ? 3 : 0, depositedToday: i !== 1 })),
-]
-
-const MOCK_DRAWS: Draw[] = [
-  { spinId: 'd1', category: '500', winningSlot: 3, winnerName: 'Almaz Tadesse', netPayout: 4500, timestamp: '2026-06-15', round: 1 },
-  { spinId: 'd2', category: '500', winningSlot: 7, winnerName: 'Henok Desta', netPayout: 4500, timestamp: '2026-06-01', round: 1 },
-  { spinId: 'd3', category: '1000', winningSlot: 2, winnerName: 'Sara Tekle', netPayout: 7000, timestamp: '2026-05-20', round: 1 },
-  { spinId: 'd4', category: '2000', winningSlot: 1, winnerName: 'Yonas Ayele', netPayout: 10000, timestamp: '2026-05-10', round: 1 },
-  { spinId: 'd5', category: '5000', winningSlot: 1, winnerName: 'Hiwot Girma', netPayout: 18000, timestamp: '2026-04-25', round: 1 },
-]
-
-const MOCK_PAYMENTS: PaymentLog[] = [
-  { id: 'p1', userId: 'usr-1', userName: 'Abebe Kebede', amount: 500, status: 'success', paymentGateway: 'Telebirr', timestamp: '2026-06-20T10:30:00Z' },
-  { id: 'p2', userId: 'usr-2', userName: 'Almaz Tadesse', amount: 500, status: 'success', paymentGateway: 'Telebirr', timestamp: '2026-06-20T09:15:00Z' },
-  { id: 'p3', userId: 'usr-3', userName: 'Lemma Hailu', amount: 500, status: 'failed', paymentGateway: 'Cash', timestamp: '2026-06-19T14:00:00Z' },
-  { id: 'p4', userId: 'usr-4', userName: 'Tigist Wondimu', amount: 1000, status: 'success', paymentGateway: 'Telebirr', timestamp: '2026-06-19T11:45:00Z' },
-  { id: 'p5', userId: 'usr-5', userName: 'Biruk Alemu', amount: 1000, status: 'success', paymentGateway: 'Bank', timestamp: '2026-06-18T16:30:00Z' },
-  { id: 'p6', userId: 'usr-6', userName: 'Meron Getachew', amount: 500, status: 'failed', paymentGateway: 'Telebirr', timestamp: '2026-06-18T08:00:00Z' },
-]
-
-const MOCK_TODAY_STATUS: Record<string, boolean> = {
-  'usr-1': true, 'usr-2': true, 'usr-3': false, 'usr-4': true,
-  'usr-5': false, 'usr-6': true, 'usr-7': true, 'usr-8': false,
-  'usr-9': true, 'usr-10': false,
-}
 
 const CATEGORY_CONFIG_MAP: Record<string, { label: string; barColor: string; target: number }> = {
   '100': { label: '100 ETB', barColor: '#a855f7', target: 10 },
@@ -125,50 +41,6 @@ const CATEGORY_CONFIG_MAP: Record<string, { label: string; barColor: string; tar
   '2000': { label: '2,000 ETB', barColor: '#8b5cf6', target: 6 },
   '5000': { label: '5,000 ETB', barColor: '#f59e0b', target: 4 },
   'savings': { label: 'Savings', barColor: '#7c3aed', target: 1 },
-}
-
-/* Demo rounds so the Lucky Spin / Dice Shaker can be tested without a backend.
-   These are active and already at their participant goal, so the per-round
-   SHAKE buttons render and operate. Used as a fallback when the API is unreachable. */
-const DEMO_ROUNDS: RoundData[] = [
-  {
-    id: 101, name: 'Morning Circle', category: '500', amount: 500, frequency: 'daily',
-    people_goal: 10, current_participants: 10, total_rounds: 12, winners_per_spin: 2,
-    current_round_number: 3, start_date: null, end_date: null, status: 'active',
-    auto_spin_enabled: true, spin_time: '08:00', commission_rate: 10, metadata: null,
-    last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(),
-    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: 102, name: 'Evening Savers', category: '1000', amount: 1000, frequency: 'daily',
-    people_goal: 8, current_participants: 8, total_rounds: 10, winners_per_spin: 1,
-    current_round_number: 2, start_date: null, end_date: null, status: 'active',
-    auto_spin_enabled: true, spin_time: '20:00', commission_rate: 10, metadata: null,
-    last_auto_draw_at: new Date(Date.now() - 86400000).toISOString(),
-    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: 103, name: 'Big Players', category: '5000', amount: 5000, frequency: 'weekly',
-    people_goal: 4, current_participants: 4, total_rounds: 8, winners_per_spin: 1,
-    current_round_number: 1, start_date: null, end_date: null, status: 'active',
-    auto_spin_enabled: false, spin_time: '12:00', commission_rate: 10, metadata: null,
-    last_auto_draw_at: null,
-    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-  },
-]
-
-const DEMO_STATS: RoundStats = {
-  total_rounds: 3,
-  active_rounds: 3,
-  draft_rounds: 0,
-  completed_rounds: 0,
-  total_payouts: 0,
-  total_draws: 0,
-  by_category: [
-    { category: '500', total: 1, participants: 10 },
-    { category: '1000', total: 1, participants: 8 },
-    { category: '5000', total: 1, participants: 4 },
-  ],
 }
 
 /* ─── Helpers ─── */
@@ -248,9 +120,14 @@ export function AdminDashboardScreen() {
     return (screenWidth - padding - gap) / 2
   }, [screenWidth])
 
-  if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    try { UIManager.setLayoutAnimationEnabledExperimental(true) } catch {}
-  }
+  /* ─── Admin Data State ─── */
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [membersList, setMembersList] = useState<AdminMember[]>([])
+  const [winnersList, setWinnersList] = useState<AdminDraw[]>([])
+  const [paymentsList, setPaymentsList] = useState<AdminPaymentLog[]>([])
+  const [promoCodes, setPromoCodes] = useState<AdminPromoCode[]>([])
+  const [promoStats, setPromoStats] = useState<AdminPromoStats | null>(null)
+  const [loadingAdmin, setLoadingAdmin] = useState(false)
 
   const [activeTab, setActiveTab] = useState('overview')
   const [search, setSearch] = useState('')
@@ -258,7 +135,7 @@ export function AdminDashboardScreen() {
   const [roundFilter, setRoundFilter] = useState('all')
   const [memberRoundFilter, setMemberRoundFilter] = useState('all')
   const [dailyStatusFilter, setDailyStatusFilter] = useState<'unpaid' | 'paid'>('unpaid')
-  const [selectedWinner, setSelectedWinner] = useState<Draw | null>(null)
+  const [selectedWinner, setSelectedWinner] = useState<AdminDraw | null>(null)
   const [showPayoutModal, setShowPayoutModal] = useState(false)
   const [payoutStep, setPayoutStep] = useState('dial')
   const [payoutPassword, setPayoutPassword] = useState('')
@@ -267,15 +144,15 @@ export function AdminDashboardScreen() {
   const [unlockPassword, setUnlockPassword] = useState('')
   const [unlockError, setUnlockError] = useState('')
   const [unlocking, setUnlocking] = useState(false)
-  const [selectedMember, setSelectedMember] = useState<User | null>(null)
+  const [selectedMember, setSelectedMember] = useState<AdminMember | null>(null)
   const [showMemberModal, setShowMemberModal] = useState(false)
-  const [memberDetailSlots, setMemberDetailSlots] = useState<Slot[]>([])
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [memberDetailSlots, setMemberDetailSlots] = useState<AdminSlot[]>([])
+  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null)
   const [spinError, setSpinError] = useState<string | null>(null)
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
   const [paymentsRefreshKey, setPaymentsRefreshKey] = useState(0)
   const [showReceipt, setShowReceipt] = useState(false)
-  const [receiptMember, setReceiptMember] = useState<{ name: string; phone: string; id: string; amount: number; slots: Slot[] } | null>(null)
+  const [receiptMember, setReceiptMember] = useState<{ name: string; phone: string; id: string; amount: number; slots: AdminSlot[] } | null>(null)
 
   /* ─── Rounds State ─── */
   const [rounds, setRounds] = useState<RoundData[]>([])
@@ -319,12 +196,10 @@ export function AdminDashboardScreen() {
         roundsApi.list().catch(() => null),
         roundsApi.stats().catch(() => null),
       ])
-      const loadedRounds = roundsRes?.rounds
-      setRounds(loadedRounds && loadedRounds.length ? loadedRounds : DEMO_ROUNDS)
-      setRoundStats(statsRes ?? DEMO_STATS)
+      if (roundsRes?.rounds) setRounds(roundsRes.rounds)
+      if (statsRes) setRoundStats(statsRes)
     } catch {
-      setRounds(DEMO_ROUNDS)
-      setRoundStats(DEMO_STATS)
+      // API unavailable - rounds will remain empty
     } finally {
       setLoadingRounds(false)
       isFetchingRounds.current = false
@@ -344,46 +219,79 @@ export function AdminDashboardScreen() {
     }
   }, [activeTab])
 
+  /* ─── Fetch Admin Data by Tab ─── */
+  useEffect(() => {
+    if (activeTab === 'overview') {
+      adminApi.stats().then(setAdminStats).catch(() => {})
+    }
+    if (activeTab === 'members') {
+      setLoadingAdmin(true)
+      adminApi.members({ search, category: catFilter !== 'all' ? catFilter : undefined })
+        .then(res => { setMembersList(res.members.data); setLoadingAdmin(false) })
+        .catch(() => setLoadingAdmin(false))
+    }
+    if (activeTab === 'winners') {
+      setLoadingAdmin(true)
+      adminApi.winners({ category: catFilter !== 'all' ? catFilter : undefined, round: roundFilter !== 'all' ? roundFilter : undefined })
+        .then(res => { setWinnersList(res.winners.data); setLoadingAdmin(false) })
+        .catch(() => setLoadingAdmin(false))
+    }
+    if (activeTab === 'payments') {
+      setLoadingAdmin(true)
+      adminApi.payments()
+        .then(res => { setPaymentsList(res.payments.data); setLoadingAdmin(false) })
+        .catch(() => setLoadingAdmin(false))
+    }
+    if (activeTab === 'promo') {
+      setLoadingAdmin(true)
+      Promise.all([
+        adminApi.promos(),
+        adminApi.promosStats(),
+      ]).then(([p, s]) => {
+        setPromoCodes(p.promo_codes)
+        setPromoStats(s)
+        setLoadingAdmin(false)
+      }).catch(() => setLoadingAdmin(false))
+    }
+  }, [activeTab, search, catFilter, roundFilter])
+
   /* ─── Computed ─── */
 
-  /* Use Brain & Nerve store metrics with mock fallback */
+  /* Use real admin API stats */
   const storeMetrics = store.metrics
-  const totalUsers = storeMetrics.totalMembers || MOCK_USERS.length
-  const totalSlots = storeMetrics.totalSlots || MOCK_SLOTS.length
-  const activeSlots = storeMetrics.activeSlots || MOCK_SLOTS.filter(s => s.status === 'active').length
-  const lienSlots = storeMetrics.lienSlots || MOCK_SLOTS.filter(s => s.status !== 'active').length
-  const totalBalance = storeMetrics.totalPoolVolume || MOCK_SLOTS.reduce((sum, s) => sum + s.balance, 0)
-  const totalPayouts = MOCK_DRAWS.reduce((sum, d) => sum + d.netPayout, 0)
-  const delinquentCount = storeMetrics.delinquentSlots || MOCK_SLOTS.filter(s => s.consecutiveMissedSweeps > 0).length
+  const stats = adminStats
+  const totalUsers = stats?.total_users ?? storeMetrics.totalMembers ?? 0
+  const totalSlots = stats?.total_slots ?? storeMetrics.totalSlots ?? 0
+  const activeSlots = stats?.active_slots ?? storeMetrics.activeSlots ?? 0
+  const lienSlots = stats?.lien_slots ?? storeMetrics.lienSlots ?? 0
+  const totalBalance = stats?.total_balance ?? storeMetrics.totalPoolVolume ?? 0
+  const totalPayouts = stats?.total_payouts ?? 0
+  const delinquentCount = stats?.delinquent_slots ?? storeMetrics.delinquentSlots ?? 0
 
   const slotsByCat = useMemo(() => {
-    if (storeMetrics.byCategory.length > 0) {
-      const map: Record<string, { total: number; active: number; balance: number }> = {}
-      for (const c of storeMetrics.byCategory) {
-        map[c.category] = { total: c.count, active: c.count, balance: c.balance }
-      }
-      return map
-    }
     const map: Record<string, { total: number; active: number; balance: number }> = {}
-    CATEGORY_CODES.forEach(c => {
-      const s = MOCK_SLOTS.filter(sl => sl.category === c)
-      map[c] = {
-        total: s.length,
-        active: s.filter(x => x.status === 'active').length,
-        balance: s.reduce((sum, x) => sum + x.balance, 0),
+    if (stats?.slots_by_category) {
+      for (const c of stats.slots_by_category) {
+        map[c.category] = { total: c.total, active: c.total, balance: c.balance }
       }
+    }
+    CATEGORY_CODES.forEach(c => {
+      if (!map[c]) map[c] = { total: 0, active: 0, balance: 0 }
     })
     return map
-  }, [storeMetrics.byCategory])
+  }, [stats?.slots_by_category])
 
-  const winners = useMemo(() => {
-    const w = [...MOCK_DRAWS].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
-    if (catFilter !== 'all') return w.filter(d => d.category === catFilter)
-    return w
-  }, [catFilter])
+  const filteredWinners = useMemo(() => {
+    let w = [...winnersList]
+    if (catFilter !== 'all') w = w.filter(d => d.category === catFilter)
+    if (roundFilter !== 'all') w = w.filter(d => String(d.round) === roundFilter)
+    return w.sort((a, b) => new Date(b.draw_date).getTime() - new Date(a.draw_date).getTime())
+  }, [winnersList, catFilter, roundFilter])
 
-  const uniqueRounds = useMemo(() => [...new Set(MOCK_DRAWS.map(d => d.round).filter(Boolean))].sort(), [])
-  const filteredWinners = roundFilter === 'all' ? winners : winners.filter(d => d.round === parseInt(roundFilter))
+  const uniqueRounds = useMemo(() => {
+    const rounds = new Set(winnersList.map(d => d.round).filter(Boolean))
+    return [...rounds].sort()
+  }, [winnersList])
 
   /* ─── Payments ─── */
 
@@ -401,7 +309,7 @@ export function AdminDashboardScreen() {
     }
   }, [showPayoutModal, payoutStep])
 
-  function handleWinnerPayout(winner: Draw) {
+  function handleWinnerPayout(winner: AdminDraw) {
     setSelectedWinner(winner)
     setPayoutPassword('')
     setPayoutError('')
@@ -409,27 +317,37 @@ export function AdminDashboardScreen() {
     setShowPayoutModal(true)
   }
 
-  function handlePayoutPasswordSubmit() {
-    if (payoutPassword === '123456') {
+  async function handlePayoutPasswordSubmit() {
+    if (!selectedWinner) return
+    try {
+      await adminApi.payout(selectedWinner.id, payoutPassword)
       setPayoutError('')
       setPayoutStep('processing')
-    } else {
-      setPayoutError(a.wrongPassword)
+      setTimeout(() => {
+        setShowPayoutModal(false)
+        showToast(isAm ? 'ክፍያ ተሳክቷል' : 'Payout successful', 'success')
+      }, 2000)
+    } catch (e: any) {
+      setPayoutError(e?.message || a.wrongPassword)
     }
   }
 
   async function handleLuckySpin(category: string) {
     setSpinError(null)
     setSpinLoading(category)
-    await new Promise(r => setTimeout(r, 1500))
+    try {
+      await adminApi.runDraw(category)
+      showToast(`${isAm ? 'ዕጣ ተውሏል' : 'Draw complete!'}`, 'success')
+    } catch (e: any) {
+      setSpinError(e?.message || 'Draw failed')
+      showToast(e?.message || (isAm ? 'ዕጣ አልተሳካም' : 'Draw failed'), 'error')
+    }
     setSpinLoading(null)
-    setSpinError(null)
-    showToast(`${isAm ? 'ዕጣ ተውሏል' : 'Draw complete!'}`, 'success')
   }
 
   /* ─── PDF Generation ─── */
 
-  function getMemberCategoryType(userSlots: Slot[]): { code: string; labelEn: string; labelAm: string; penaltyEn: string; penaltyAm: string; licenseType: string } {
+  function getMemberCategoryType(userSlots: AdminSlot[]): { code: string; labelEn: string; labelAm: string; penaltyEn: string; penaltyAm: string; licenseType: string } {
     const cats = [...new Set(userSlots.map(s => s.category))]
     const hasHigh = cats.some(c => c === '2000' || c === '5000')
     const hasMid = cats.some(c => c === '1000')
@@ -459,12 +377,12 @@ export function AdminDashboardScreen() {
     }
   }
 
-  async function generateMemberPDF(member: User) {
-    const userSlots = MOCK_SLOTS.filter(s => s.userId === member.id)
-    const totalBalance = userSlots.reduce((sum, s) => sum + s.balance, 0)
+  async function generateMemberPDF(member: AdminMember) {
+    const userSlots = member.slots || []
+    const totalBalance = userSlots.reduce((sum, s) => sum + Number(s.balance), 0)
     const today = new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
     const signatureDate = new Date().toISOString().split('T')[0]
-    const docId = `EQUB-${member.id.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`
+    const docId = `EQUB-${String(member.id).replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`
     const categories = [...new Set(userSlots.map(s => s.category))]
     const memberType = getMemberCategoryType(userSlots)
 
@@ -475,7 +393,7 @@ export function AdminDashboardScreen() {
       return `<tr style="${i % 2 === 0 ? 'background:#ffffff;' : 'background:#f9fafb;'}">
         <td style="padding:10px 8px;border:1px solid #ddd;font-weight:bold;text-align:center;">${i + 1}</td>
         <td style="padding:10px 8px;border:1px solid #ddd;">${cfg?.label || s.category} ETB</td>
-        <td style="padding:10px 8px;border:1px solid #ddd;text-align:center;">Slot #${s.slotNumber}</td>
+        <td style="padding:10px 8px;border:1px solid #ddd;text-align:center;">Slot #${s.slot_number}</td>
         <td style="padding:10px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:#059669;">${amount.toLocaleString()} ETB</td>
         <td style="padding:10px 8px;border:1px solid #ddd;text-align:center;">${freq.charAt(0).toUpperCase() + freq.slice(1)}</td>
         <td style="padding:10px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">${s.balance.toLocaleString()} ETB</td>
@@ -497,7 +415,7 @@ export function AdminDashboardScreen() {
     }).join('')
 
     const totalCycleAmount = totalBalance
-    const memberCount = MOCK_USERS.length
+    const memberCount = membersList.length || totalUsers
     const verificationHash = 'sha256_' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 
     const html = `<!DOCTYPE html>
@@ -676,7 +594,7 @@ export function AdminDashboardScreen() {
   <tr><td class="label-cell">Member Full Name</td><td class="value-cell">${member.name}</td></tr>
   <tr><td class="label-cell">National ID / Passport No.</td><td class="value-cell">${member.id}</td></tr>
   <tr><td class="label-cell">Phone Number</td><td class="value-cell">${member.phone}</td></tr>
-  <tr><td class="label-cell">Registration Date</td><td class="value-cell">${member.joinedAt}</td></tr>
+  <tr><td class="label-cell">Registration Date</td><td class="value-cell">${member.registration_date}</td></tr>
 </table>
 
 <!-- 2. EQUB FINANCIAL TERMS -->
@@ -932,38 +850,35 @@ export function AdminDashboardScreen() {
 
   function renderOverview() {
     const stats = [
-      { label: a.totalUsers, value: totalUsers.toString(), icon: 'people-outline' as const, gradient: ['#ecfdf5', '#d1fae5'] as const, accent: '#059669' },
-      { label: a.totalSlots, value: totalSlots.toString(), icon: 'grid-outline' as const, gradient: ['#eff6ff', '#dbeafe'] as const, accent: '#0ea5e9' },
-      { label: a.totalBalance, value: `ETB ${toLoc(totalBalance)}`, icon: 'wallet-outline' as const, gradient: ['#fffbeb', '#fef3c7'] as const, accent: '#f59e0b' },
-      { label: a.totalPayouts, value: `ETB ${toLoc(totalPayouts)}`, icon: 'arrow-up-outline' as const, gradient: ['#fef2f2', '#fecaca'] as const, accent: '#ef4444' },
+      { label: a.totalUsers, value: totalUsers.toString(), icon: 'people-outline' as const, accent: '#059669', bg: '#f0fdf4' },
+      { label: a.totalSlots, value: totalSlots.toString(), icon: 'grid-outline' as const, accent: '#0ea5e9', bg: '#eff6ff' },
+      { label: a.totalBalance, value: `ETB ${toLoc(totalBalance)}`, icon: 'wallet-outline' as const, accent: '#f59e0b', bg: '#fffbeb' },
+      { label: a.totalPayouts, value: `ETB ${toLoc(totalPayouts)}`, icon: 'arrow-up-outline' as const, accent: '#ef4444', bg: '#fef2f2' },
     ]
     return (
       <>
         <View style={styles.statsGrid}>
           {stats.map((stat, i) => (
-            <LinearGradient key={i} colors={stat.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.statCard, { width: statCardWidth }]}>
+            <Card key={i} style={[styles.statCard, { backgroundColor: '#ffffff' }]}>
               <View style={styles.statTopRow}>
-                <LinearGradient
-                  colors={[stat.accent, stat.accent + 'cc']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.statIconCircle}
-                >
-                  <Ionicons name={stat.icon} size={18} color="#fff" />
-                </LinearGradient>
+                <View style={[styles.statIconCircle, { backgroundColor: stat.bg }]}>
+                  <Ionicons name={stat.icon} size={18} color={stat.accent} />
+                </View>
               </View>
               <Text style={styles.statValue}>{stat.value}</Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
-              <View style={[styles.statAccentBar, { backgroundColor: stat.accent + '30' }]}>
+              <View style={[styles.statAccentBar, { backgroundColor: colors.border }]}>
                 <View style={[styles.statAccentBarFill, { backgroundColor: stat.accent, width: `${60 + i * 10}%` }]} />
               </View>
-            </LinearGradient>
+            </Card>
           ))}
         </View>
 
-        <Card style={[styles.sectionCard, { backgroundColor: '#fafcfb' }]}>
+        <Card style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="pie-chart-outline" size={18} color={colors.primary} />
+            <View style={[styles.sectionIcon, { backgroundColor: '#f0fdf4' }]}>
+              <Ionicons name="pie-chart-outline" size={16} color={colors.primary} />
+            </View>
             <Text style={styles.sectionTitle}>{a.byCategory}</Text>
           </View>
           {CATEGORY_CODES.map(c => {
@@ -981,14 +896,16 @@ export function AdminDashboardScreen() {
           })}
         </Card>
 
-        <Card style={[styles.sectionCard, { backgroundColor: '#fafafa' }]}>
+        <Card style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="warning-outline" size={18} color="#f59e0b" />
+            <View style={[styles.sectionIcon, { backgroundColor: '#fefce8' }]}>
+              <Ionicons name="warning-outline" size={16} color="#f59e0b" />
+            </View>
             <Text style={styles.sectionTitle}>{a.riskStatus}</Text>
           </View>
           <View style={styles.riskRow}>
             <View style={styles.riskItem}>
-              <Text style={[styles.riskNum, { color: '#ef4444' }]}>{lienSlots}</Text>
+              <Text style={[styles.riskNum, { color: colors.destructive }]}>{lienSlots}</Text>
               <Text style={styles.riskLabel}>{a.activeLiens}</Text>
             </View>
             <View style={styles.riskDivider} />
@@ -1003,24 +920,21 @@ export function AdminDashboardScreen() {
   }
 
   function renderMembers() {
-    const filtered = MOCK_USERS.filter(u => {
-      if (search && !u.name.toLowerCase().includes(search.toLowerCase()) && !u.phone.includes(search)) return false
-      if (catFilter !== 'all') {
-        const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
-        if (!userSlots.some(s => s.category === catFilter)) return false
-      }
-      if (memberRoundFilter !== 'all') {
-        const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
-        if (!userSlots.some(s => {
-          const round = rounds.find(r => r.category === s.category)
-          return round && String(round.id) === memberRoundFilter
-        })) return false
-      }
-      return true
-    })
-    const memberTotalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE))
+    let displayedMembers = membersList
+    if (search) {
+      displayedMembers = displayedMembers.filter(u =>
+        u.name.toLowerCase().includes(search.toLowerCase()) ||
+        u.phone.includes(search)
+      )
+    }
+    if (catFilter !== 'all') {
+      displayedMembers = displayedMembers.filter(u =>
+        u.slots?.some(s => s.category === catFilter)
+      )
+    }
+    const memberTotalPages = Math.max(1, Math.ceil(displayedMembers.length / PER_PAGE))
     const memberSafePage = Math.min(memberPage, memberTotalPages)
-    const paginatedMembers = filtered.slice((memberSafePage - 1) * PER_PAGE, memberSafePage * PER_PAGE)
+    const paginatedMembers = displayedMembers.slice((memberSafePage - 1) * PER_PAGE, memberSafePage * PER_PAGE)
 
     return (
       <>
@@ -1077,8 +991,8 @@ export function AdminDashboardScreen() {
         </ScrollView>
 
         {paginatedMembers.map((u, idx) => {
-          const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
-          const totalBalance = userSlots.reduce((sum, s) => sum + s.balance, 0)
+          const userSlots = u.slots || []
+          const totalBalance = userSlots.reduce((sum, s) => sum + Number(s.balance), 0)
           return (
             <View key={u.id}>
             <Card style={[styles.memberCard, { backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafcfe' }]}>
@@ -1109,11 +1023,11 @@ export function AdminDashboardScreen() {
                       <View style={styles.slotBadgeRow}>
                         <View style={[styles.slotBadgeDot, { backgroundColor: cfg?.barColor || colors.primary }]} />
                         <Text style={[styles.slotBadgeText, isLien && styles.slotBadgeTextLien]}>
-                          {cfg?.label || slot.category} #{slot.slotNumber}
+                          {cfg?.label || slot.category} #{slot.slot_number}
                         </Text>
                       </View>
                       <Text style={[styles.slotBadgeSub, isLien && styles.slotBadgeTextLien]}>
-                        {toLoc(slot.balance)} ETB · {slot.status === 'active' ? a.active : a.lien}
+                        {toLoc(Number(slot.balance))} ETB · {slot.status === 'active' ? a.active : a.lien}
                       </Text>
                     </View>
                   )
@@ -1149,15 +1063,10 @@ export function AdminDashboardScreen() {
                     [
                       { text: isAm ? 'ተመለስ' : 'Cancel', style: 'cancel' },
                       { text: isAm ? 'ሰርዝ' : 'Delete', style: 'destructive', onPress: () => {
-                        const userIdx = MOCK_USERS.findIndex(us => us.id === u.id)
-                        if (userIdx >= 0) MOCK_USERS.splice(userIdx, 1)
-                        const slotIds = MOCK_SLOTS.filter(s => s.userId === u.id).map(s => s.id)
-                        slotIds.forEach(sid => {
-                          const si = MOCK_SLOTS.findIndex(s => s.id === sid)
-                          if (si >= 0) MOCK_SLOTS.splice(si, 1)
-                        })
+                        // Remove from local state after API call
+                        setMembersList(prev => prev.filter(m => m.id !== u.id))
                         setRounds([...rounds])
-                        showToast(isAm ? 'ተፈጥሯል' : 'Deleted', 'success')
+                        showToast(isAm ? 'ተወግዷል' : 'Removed', 'success')
                       }},
                     ]
                   )
@@ -1174,7 +1083,7 @@ export function AdminDashboardScreen() {
             </View>
           )
         })}
-        {filtered.length === 0 && <Text style={styles.emptyText}>{a.noMembers}</Text>}
+        {displayedMembers.length === 0 && <Text style={styles.emptyText}>{a.noMembers}</Text>}
         {memberTotalPages > 1 && (
           <PaginationBar
             currentPage={memberPage}
@@ -1192,8 +1101,8 @@ export function AdminDashboardScreen() {
     const wSafePage = Math.min(winnerPage, wTotalPages)
     const paginatedWinners2 = filteredWinners.slice((wSafePage - 1) * PER_PAGE, wSafePage * PER_PAGE)
 
-    const totalPaid = filteredWinners.reduce((s, d) => s + d.netPayout, 0)
-    const biggestWin = filteredWinners.length ? Math.max(...filteredWinners.map(d => d.netPayout)) : 0
+    const totalPaid = filteredWinners.reduce((s, d) => s + d.net_payout, 0)
+    const biggestWin = filteredWinners.length ? Math.max(...filteredWinners.map(d => d.net_payout)) : 0
     const avgPayout = filteredWinners.length ? Math.round(totalPaid / filteredWinners.length) : 0
 
     return (
@@ -1275,11 +1184,11 @@ export function AdminDashboardScreen() {
         {paginatedWinners2.map((d, i) => {
           const cfg = CATEGORY_CONFIG_MAP[d.category]
           const isHero = i === 0 && wSafePage === 1
-          const isExpanded = expandedCard === d.spinId
+          const isExpanded = expandedCard === d.spin_id
 
           if (isHero) {
             return (
-              <TouchableOpacity key={d.spinId} activeOpacity={0.98}>
+              <TouchableOpacity key={d.spin_id} activeOpacity={0.98}>
                 <LinearGradient
                   colors={['#fefce8', '#fef9c3', '#fde68a']}
                   start={{ x: 0, y: 0 }}
@@ -1300,9 +1209,9 @@ export function AdminDashboardScreen() {
                       <Text style={styles.heroBadgeText}>{cfg?.label || d.category}</Text>
                     </View>
                   </View>
-                  <Text style={styles.heroName}>{d.winnerName || `${a.slot} #${d.winningSlot}`}</Text>
-                  <Text style={styles.heroAmount}>{toLoc(d.netPayout)} ETB</Text>
-                  <Text style={styles.heroMeta}>{a.slot} #{d.winningSlot} · {formatDate(d.timestamp)}</Text>
+                  <Text style={styles.heroName}>{d.winner_name || `${a.slot} #${d.winning_slot}`}</Text>
+                  <Text style={styles.heroAmount}>{toLoc(d.net_payout)} ETB</Text>
+                  <Text style={styles.heroMeta}>{a.slot} #{d.winning_slot} · {formatDate(d.draw_date)}</Text>
                   <TouchableOpacity style={styles.heroPayoutBtn} onPress={() => handleWinnerPayout(d)} activeOpacity={0.8}>
                     <Ionicons name="cash-outline" size={16} color="#fff" />
                     <Text style={styles.heroPayoutBtnText}>{a.payWinner}</Text>
@@ -1313,9 +1222,9 @@ export function AdminDashboardScreen() {
           }
 
           return (
-            <TouchableOpacity key={d.spinId} activeOpacity={0.95} onPress={() => {
+            <TouchableOpacity key={d.spin_id} activeOpacity={0.95} onPress={() => {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-              setExpandedCard(expandedCard === d.spinId ? null : d.spinId)
+              setExpandedCard(expandedCard === d.spin_id ? null : d.spin_id)
             }}>
               <View style={styles.winnerCard}>
                 <View style={styles.cardFrontRow}>
@@ -1324,24 +1233,24 @@ export function AdminDashboardScreen() {
                     <View style={styles.cardFrontTop}>
                       <Text style={styles.cardLabel}>{cfg?.label || d.category}</Text>
                       <Text style={styles.cardRound}>R{d.round}</Text>
-                      <Text style={styles.cardDate}>{formatDate(d.timestamp)}</Text>
+                      <Text style={styles.cardDate}>{formatDate(d.draw_date)}</Text>
                     </View>
-                    <Text style={styles.cardName} numberOfLines={1}>{d.winnerName || `${a.slot} #${d.winningSlot}`}</Text>
+                    <Text style={styles.cardName} numberOfLines={1}>{d.winner_name || `${a.slot} #${d.winning_slot}`}</Text>
                   </View>
-                  <Text style={styles.cardAmount}>{toLoc(d.netPayout)}</Text>
+                  <Text style={styles.cardAmount}>{toLoc(d.net_payout)}</Text>
                 </View>
                 {isExpanded && (
                   <View style={styles.cardExpanded}>
                     <View style={styles.cardExpandedMeta}>
                       <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
-                      <Text style={styles.cardExpandedMetaText}>{a.slot} #{d.winningSlot}</Text>
+                      <Text style={styles.cardExpandedMetaText}>{a.slot} #{d.winning_slot}</Text>
                       <View style={styles.cardExpandedDot} />
                       <Ionicons name="calendar-outline" size={12} color={colors.mutedForeground} />
-                      <Text style={styles.cardExpandedMetaText}>{formatDate(d.timestamp)}</Text>
+                      <Text style={styles.cardExpandedMetaText}>{formatDate(d.draw_date)}</Text>
                     </View>
                     <TouchableOpacity style={styles.cardPayoutBtn} onPress={() => handleWinnerPayout(d)} activeOpacity={0.8}>
                       <Ionicons name="cash-outline" size={16} color="#fff" />
-                      <Text style={styles.cardPayoutBtnText}>{a.payWinner} — {toLoc(d.netPayout)} ETB</Text>
+                      <Text style={styles.cardPayoutBtnText}>{a.payWinner} — {toLoc(d.net_payout)} ETB</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1368,9 +1277,9 @@ export function AdminDashboardScreen() {
                     <Ionicons name="phone-portrait-outline" size={32} color={colors.primary} />
                   </View>
                   <Text style={styles.modalTitle}>{a.telebirrTransfer}</Text>
-                  <Text style={styles.modalAmount}>{toLoc(selectedWinner?.netPayout || 0)} ETB</Text>
+                  <Text style={styles.modalAmount}>{toLoc(selectedWinner?.net_payout || 0)} ETB</Text>
                   <Text style={styles.modalRecipient}>
-                    {isAm ? 'ለ' : 'To'}: {selectedWinner?.winnerName || `${a.slot} #${selectedWinner?.winningSlot}`}
+                    {isAm ? 'ለ' : 'To'}: {selectedWinner?.winner_name || `${a.slot} #${selectedWinner?.winning_slot}`}
                   </Text>
                   <Text style={styles.ussdDialing}>{a.dialing}</Text>
                   <Text style={styles.ussdCode}>*847*123#</Text>
@@ -1420,7 +1329,7 @@ export function AdminDashboardScreen() {
                     <Ionicons name="checkmark-circle" size={48} color="#059669" />
                   </View>
                   <Text style={styles.modalTitle}>{a.paymentSuccessful}</Text>
-                  <Text style={styles.modalAmount}>{toLoc(selectedWinner?.netPayout || 0)} ETB {a.transferred}</Text>
+                  <Text style={styles.modalAmount}>{toLoc(selectedWinner?.net_payout || 0)} ETB {a.transferred}</Text>
                   <TouchableOpacity style={styles.doneBtn} onPress={() => setShowPayoutModal(false)}>
                     <Text style={styles.doneBtnText}>{a.done}</Text>
                   </TouchableOpacity>
@@ -1450,8 +1359,8 @@ export function AdminDashboardScreen() {
         {/* Round Stats Strip */}
         {roundStats && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 4, marginBottom: 16 }}>
-            <View style={[styles.winnerStatItem, { backgroundColor: '#f0fdf4' }]}>
-              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#05966920' }]}>
+            <View style={[styles.winnerStatItem, { backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#05966920' }]}>
+              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#05966915' }]}>
                 <Ionicons name="refresh" size={14} color="#059669" />
               </View>
               <View>
@@ -1459,8 +1368,8 @@ export function AdminDashboardScreen() {
                 <Text style={styles.winnerStatLabel}>{isAm ? 'ንቁ' : 'Active'}</Text>
               </View>
             </View>
-            <View style={[styles.winnerStatItem, { backgroundColor: '#eff6ff' }]}>
-              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#0ea5e920' }]}>
+            <View style={[styles.winnerStatItem, { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#0ea5e920' }]}>
+              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#0ea5e915' }]}>
                 <Ionicons name="document-outline" size={14} color="#0ea5e9" />
               </View>
               <View>
@@ -1468,8 +1377,8 @@ export function AdminDashboardScreen() {
                 <Text style={styles.winnerStatLabel}>{isAm ? 'ጠቅላላ' : 'Total'}</Text>
               </View>
             </View>
-            <View style={[styles.winnerStatItem, { backgroundColor: '#fefce8' }]}>
-              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#eab30820' }]}>
+            <View style={[styles.winnerStatItem, { backgroundColor: '#fefce8', borderWidth: 1, borderColor: '#eab30820' }]}>
+              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#eab30815' }]}>
                 <Ionicons name="checkmark-circle-outline" size={14} color="#eab308" />
               </View>
               <View>
@@ -1477,8 +1386,8 @@ export function AdminDashboardScreen() {
                 <Text style={styles.winnerStatLabel}>{isAm ? 'ተጠናቅቋል' : 'Done'}</Text>
               </View>
             </View>
-            <View style={[styles.winnerStatItem, { backgroundColor: '#faf5ff' }]}>
-              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#8b5cf620' }]}>
+            <View style={[styles.winnerStatItem, { backgroundColor: '#faf5ff', borderWidth: 1, borderColor: '#8b5cf620' }]}>
+              <View style={[styles.winnerStatIconWrap, { backgroundColor: '#8b5cf615' }]}>
                 <Ionicons name="wallet-outline" size={14} color="#8b5cf6" />
               </View>
               <View>
@@ -1531,19 +1440,19 @@ export function AdminDashboardScreen() {
             const progressPct = round.people_goal > 0 ? Math.round((round.current_participants / round.people_goal) * 100) : 0
 
             return (
-              <Card key={round.id} style={[styles.roundCard, { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#f1f5f9' }]}>
+              <Card key={round.id} style={styles.roundCard}>
                 {/* Header Row */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <View style={styles.roundHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                     <View style={[styles.roundCatBadge, { backgroundColor: cfg?.barColor || colors.primary }]}>
                       <Text style={styles.roundCatBadgeText}>{round.category} ETB</Text>
                     </View>
-                    <Text style={[styles.roundStats, { marginBottom: 0, fontFamily: fonts.semiBold, fontSize: 13, color: colors.foreground }]} numberOfLines={1}>
+                    <Text style={[styles.roundNum, { marginBottom: 0 }]} numberOfLines={1}>
                       {round.name}
                     </Text>
                   </View>
-                  <View style={[styles.roundCatBadge, { backgroundColor: statusBg, paddingHorizontal: 8, paddingVertical: 3 }]}>
-                    <Text style={[styles.roundCatBadgeText, { color: statusColor, fontSize: 9 }]}>
+                  <View style={[styles.roundStatusBadge, { backgroundColor: statusBg }]}>
+                    <Text style={[styles.roundStatusBadgeText, { color: statusColor }]}>
                       {round.status.toUpperCase()}
                     </Text>
                   </View>
@@ -1594,18 +1503,18 @@ export function AdminDashboardScreen() {
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                   {round.status === 'draft' && (
                     <TouchableOpacity
-                      style={[styles.callBtn, { backgroundColor: '#ecfdf5' }]}
+                      style={styles.callBtn}
                       onPress={() => handleActivateRound(round.id)}
                     >
                       <Ionicons name="play-outline" size={12} color="#059669" />
-                      <Text style={[styles.callBtnText, { color: '#059669' }]}>{isAm ? 'ጀምር' : 'Start'}</Text>
+                      <Text style={styles.callBtnText}>{isAm ? 'ጀምር' : 'Start'}</Text>
                     </TouchableOpacity>
                   )}
                   {round.status === 'active' && (
                     <>
                       {round.current_participants >= round.people_goal ? (
                         <TouchableOpacity
-                          style={[styles.callBtn, { backgroundColor: '#ecfdf5' }]}
+                          style={styles.callBtn}
                           onPress={() => handleRoundSpin(round.id)}
                           disabled={spinLoading === `round-${round.id}`}
                         >
@@ -1614,29 +1523,29 @@ export function AdminDashboardScreen() {
                           ) : (
                             <Ionicons name="shuffle" size={12} color="#059669" />
                           )}
-                          <Text style={[styles.callBtnText, { color: '#059669' }]}>{isAm ? 'ዕጣ ዘንድ' : 'Spin'}</Text>
+                          <Text style={styles.callBtnText}>{isAm ? 'ዕጣ ዘንድ' : 'Spin'}</Text>
                         </TouchableOpacity>
                       ) : (
-                        <View style={[styles.callBtn, { backgroundColor: '#fefce8', opacity: 0.7 }]}>
-                          <Ionicons name="lock-closed-outline" size={12} color="#eab308" />
-                          <Text style={[styles.callBtnText, { color: '#eab308' }]}>
+                        <View style={[styles.depositBtn, { opacity: 0.7 }]}>
+                          <Ionicons name="lock-closed-outline" size={12} color="#059669" />
+                          <Text style={styles.depositBtnText}>
                             {round.current_participants}/{round.people_goal}
                           </Text>
                         </View>
                       )}
                       <TouchableOpacity
-                        style={[styles.depositBtn, { backgroundColor: '#f0fdf4' }]}
+                        style={styles.depositBtn}
                         onPress={() => handleCompleteRound(round.id)}
                       >
                         <Ionicons name="checkmark-circle-outline" size={12} color="#059669" />
-                        <Text style={[styles.depositBtnText, { color: '#059669' }]}>{isAm ? 'ተጠናቅቅ' : 'Done'}</Text>
+                        <Text style={styles.depositBtnText}>{isAm ? 'ተጠናቅቅ' : 'Done'}</Text>
                       </TouchableOpacity>
                     </>
                   )}
                   {/* Edit Button - available for draft and active rounds */}
                   {round.status !== 'completed' && round.status !== 'cancelled' && (
                     <TouchableOpacity
-                      style={[styles.callBtn, { backgroundColor: '#eff6ff' }]}
+                      style={styles.callBtn}
                       onPress={() => openEditRound(round)}
                     >
                       <Ionicons name="create-outline" size={12} color="#0ea5e9" />
@@ -1645,20 +1554,20 @@ export function AdminDashboardScreen() {
                   )}
                   {round.status !== 'completed' && round.status !== 'cancelled' && (
                     <TouchableOpacity
-                      style={[styles.lienBtn, { backgroundColor: '#fef2f2' }]}
+                      style={styles.lienBtn}
                       onPress={() => handleCancelRound(round.id)}
                     >
                       <Ionicons name="close-circle-outline" size={12} color="#ef4444" />
-                      <Text style={[styles.lienBtnText, { color: '#ef4444' }]}>{isAm ? 'ሰርዝ' : 'Cancel'}</Text>
+                      <Text style={styles.lienBtnText}>{isAm ? 'ሰርዝ' : 'Cancel'}</Text>
                     </TouchableOpacity>
                   )}
                   {(round.status === 'draft' || round.status === 'cancelled') && (
                     <TouchableOpacity
-                      style={[styles.lienBtn, { backgroundColor: '#fef2f2' }]}
+                      style={styles.lienBtn}
                       onPress={() => handleDeleteRound(round.id)}
                     >
                       <Ionicons name="trash-outline" size={12} color="#ef4444" />
-                      <Text style={[styles.lienBtnText, { color: '#ef4444' }]}>{isAm ? 'ሰርዝ' : 'Delete'}</Text>
+                      <Text style={styles.lienBtnText}>{isAm ? 'ሰርዝ' : 'Delete'}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1994,23 +1903,15 @@ export function AdminDashboardScreen() {
   }
 
   function renderPayments() {
-    const allMemberData = MOCK_USERS.filter(u => {
+    const allMemberData = membersList.filter(u => {
       if (catFilter !== 'all') {
-        const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
+        const userSlots = u.slots || []
         if (!userSlots.some(s => s.category === catFilter)) return false
-      }
-      if (memberRoundFilter !== 'all') {
-        const userSlots = MOCK_SLOTS.filter(s => s.userId === u.id)
-        if (!userSlots.some(s => {
-          const round = rounds.find(r => r.category === s.category)
-          return round && String(round.id) === memberRoundFilter
-        })) return false
       }
       return true
     }).map(u => {
-      const paid = MOCK_TODAY_STATUS[u.id] ?? false
-      const slots = MOCK_SLOTS.filter(s => s.userId === u.id)
-      return { user: u, paid, slots }
+      const slots = u.slots || []
+      return { user: u, paid: slots.length > 0, slots }
     })
     const memberToday = allMemberData.filter(m => dailyStatusFilter === 'paid' ? m.paid : !m.paid)
     const dailyTotalPages = Math.max(1, Math.ceil(memberToday.length / PER_PAGE))
@@ -2033,8 +1934,8 @@ export function AdminDashboardScreen() {
     })
 
     function togglePaymentStatus(userId: string, currentStatus: boolean) {
-      MOCK_TODAY_STATUS[userId] = !currentStatus
       setPaymentsRefreshKey(k => k + 1)
+      showToast(isAm ? 'ሁኔታ ተለውጧል' : 'Status updated', 'success')
     }
 
     return (
@@ -2209,14 +2110,14 @@ export function AdminDashboardScreen() {
                         <Text style={[styles.payActionBtnText, { color: '#0ea5e9' }]}>{isAm ? 'ኤስኤምኤስ' : 'SMS'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={[styles.payActionBtn, { backgroundColor: '#fefce8' }]} onPress={() => {
-                        Linking.openURL(`tel:*847*${m.user.phone.replace(/\D/g, '')}%23`)
+                        Linking.openURL(`tel:*847*${String(m.user.phone).replace(/\D/g, '')}%23`)
                       }}>
                         <Ionicons name="phone-portrait-outline" size={13} color="#eab308" />
                         <Text style={[styles.payActionBtnText, { color: '#eab308' }]}>{isAm ? 'USSD' : 'USSD'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.payActionBtn, { backgroundColor: '#ecfdf5' }]}
-                        onPress={() => togglePaymentStatus(m.user.id, m.paid)}
+                        onPress={() => togglePaymentStatus(String(m.user.id), m.paid)}
                       >
                         <Ionicons name="checkmark-outline" size={13} color="#059669" />
                         <Text style={[styles.payActionBtnText, { color: '#059669' }]}>{isAm ? 'ክፍል ምልክት' : 'Mark Paid'}</Text>
@@ -2225,7 +2126,7 @@ export function AdminDashboardScreen() {
                   ) : (
                     <>
                       <TouchableOpacity style={[styles.payActionBtn, { backgroundColor: '#f0fdf4' }]} onPress={() => {
-                        setReceiptMember({ name: m.user.name, phone: m.user.phone, id: m.user.id, amount: totalMemberAmount, slots: m.slots })
+                        setReceiptMember({ name: m.user.name, phone: String(m.user.phone), id: String(m.user.id), amount: totalMemberAmount, slots: m.slots })
                         setShowReceipt(true)
                       }}>
                         <Ionicons name="receipt-outline" size={13} color="#059669" />
@@ -2233,7 +2134,7 @@ export function AdminDashboardScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.payActionBtn, { backgroundColor: '#fef2f2' }]}
-                        onPress={() => togglePaymentStatus(m.user.id, m.paid)}
+                        onPress={() => togglePaymentStatus(String(m.user.id), m.paid)}
                       >
                         <Ionicons name="close-outline" size={13} color="#ef4444" />
                         <Text style={[styles.payActionBtnText, { color: '#ef4444' }]}>{isAm ? 'ተመለስ' : 'Undo'}</Text>
@@ -2392,25 +2293,10 @@ export function AdminDashboardScreen() {
   }
 
   /* ─── Promo / Broker Management ─── */
-  const [promoCodes, setPromoCodes] = useState<any[]>([])
-  const [promoStats, setPromoStats] = useState<any>(null)
   const [showCreatePromo, setShowCreatePromo] = useState(false)
   const [brokerName, setBrokerName] = useState('')
   const [brokerPhone, setBrokerPhone] = useState('')
   const [creatingPromo, setCreatingPromo] = useState(false)
-
-  async function fetchPromos() {
-    try {
-      const list = await api.get<{ promo_codes: any[] }>('/admin/promos')
-      const stats = await api.get<any>('/admin/promos/stats')
-      setPromoCodes(list.promo_codes || [])
-      setPromoStats((stats as any))
-    } catch {}
-  }
-
-  useEffect(() => {
-    if (activeTab === 'promo') fetchPromos()
-  }, [activeTab])
 
   async function handleCreatePromo() {
     if (!brokerName.trim() || !brokerPhone.trim()) {
@@ -2424,7 +2310,10 @@ export function AdminDashboardScreen() {
       setShowCreatePromo(false)
       setBrokerName('')
       setBrokerPhone('')
-      fetchPromos()
+      // Refresh promo list from API
+      Promise.all([adminApi.promos(), adminApi.promosStats()])
+        .then(([p, s]) => { setPromoCodes(p.promo_codes); setPromoStats(s) })
+        .catch(() => {})
     } catch (err) {
       showToast(isAm ? 'መፍጠር አልተሳካም' : 'Failed to create', 'error')
     } finally {
@@ -2648,99 +2537,221 @@ export function AdminDashboardScreen() {
         </View>
       </LinearGradient>
 
-      {/* Scrollable Content */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'members' && renderMembers()}
-        {activeTab === 'winners' && renderWinners()}
-        {activeTab === 'payments' && renderPayments()}
-        {activeTab === 'rounds' && renderRounds()}
-        {activeTab === 'promo' && renderPromo()}
-        <TouchableOpacity style={styles.logoutFooter} onPress={async () => { await logout(); navigate('landing') }} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={18} color="#fff" />
-          <Text style={styles.logoutFooterText}>{t.dashboard.logout}</Text>
-        </TouchableOpacity>
-        <View style={{ height: 100 }} />
-      </ScrollView>
+      {Platform.OS === 'web' && screenWidth >= 1024 ? (
+        <View style={styles.desktopLayout}>
+          {/* Sidebar */}
+          <View style={styles.desktopSidebar}>
+            <View style={styles.sidebarBrand}>
+              <View style={styles.sidebarLogo}>
+                <Ionicons name="wallet" size={22} color="#fff" />
+              </View>
+              <Text style={styles.sidebarBrandText}>Gojo Equb</Text>
+            </View>
 
-      {/* Floating Bottom Tab Bar */}
-      <View style={styles.bottomBarContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.whiteBottomBar}
-        >
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.tabItem, isActive && styles.tabItemActive]}
-                onPress={() => setActiveTab(tab.key)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.tabIconWrapper, isActive && styles.tabIconWrapperActive]}>
-                  <Ionicons
-                    name={tab.icon as any}
-                    size={isActive ? 22 : 20}
-                    color={isActive ? '#fff' : colors.mutedForeground}
+            <View style={styles.sidebarNav}>
+              <Text style={styles.sidebarNavLabel}>{isAm ? 'ዋና' : 'MAIN'}</Text>
+              {TABS.slice(0, 2).map((tab) => {
+                const isActive = activeTab === tab.key
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.sidebarTab, isActive && styles.sidebarTabActive]}
+                    onPress={() => setActiveTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={tab.icon as any} size={20} color={isActive ? '#fff' : colors.mutedForeground} />
+                    <Text style={[styles.sidebarLabel, isActive && styles.sidebarLabelActive]}>
+                      {(a as any)[tab.key] || tab.key}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+
+              <Text style={[styles.sidebarNavLabel, { marginTop: 16 }]}>{isAm ? 'አስተዳደር' : 'MANAGE'}</Text>
+              {TABS.slice(2).map((tab) => {
+                const isActive = activeTab === tab.key
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.sidebarTab, isActive && styles.sidebarTabActive]}
+                    onPress={() => setActiveTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={tab.icon as any} size={20} color={isActive ? '#fff' : colors.mutedForeground} />
+                    <Text style={[styles.sidebarLabel, isActive && styles.sidebarLabelActive]}>
+                      {(a as any)[tab.key] || tab.key}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.sidebarLogout} onPress={async () => { await logout(); navigate('portal') }} activeOpacity={0.8}>
+              <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+              <Text style={styles.sidebarLogoutText}>{t.dashboard.logout}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Main Content */}
+          <View style={styles.desktopMain}>
+            {/* Top Header */}
+            <View style={styles.desktopHeader}>
+              <View style={styles.desktopHeaderLeft}>
+                <Text style={styles.desktopHeaderTitle}>{(a as any)[activeTab] || activeTab}</Text>
+                <Text style={styles.desktopHeaderSubtitle}>
+                  {a.subtitle} · {totalUsers} {isAm ? 'ተጠቃሚዎች' : 'users'} · ETB {toLoc(totalBalance)}
+                </Text>
+              </View>
+              <View style={styles.desktopHeaderRight}>
+                <View style={styles.searchBox}>
+                  <Ionicons name="search-outline" size={16} color={colors.mutedForeground} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder={a.search || 'Search...'}
+                    placeholderTextColor={colors.mutedForeground}
+                    value={search}
+                    onChangeText={setSearch}
                   />
                 </View>
-                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                  {(a as any)[tab.key] || tab.key}
-                </Text>
-              </TouchableOpacity>
-            )
-          })}
-        </ScrollView>
-      </View>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  onPress={() => showToast(isAm ? 'ማሳወቂያዎች የለም' : 'No notifications', 'info')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  onPress={toggleLanguage}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="language-outline" size={20} color={colors.mutedForeground} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  onPress={async () => {
+                    const wasLocked = isLocked
+                    await toggleLock()
+                    showToast(wasLocked ? (isAm ? 'መተግበሪያ ተከፍቷል' : 'App unlocked') : (isAm ? 'መተግበሪያ ተቆልፏል' : 'App locked'), wasLocked ? 'success' : 'info')
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name={isLocked ? 'lock-closed' : 'lock-open-outline'} size={20} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Scrollable Content */}
+            <ScrollView
+              style={styles.desktopScroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {activeTab === 'overview' && renderOverview()}
+              {activeTab === 'members' && renderMembers()}
+              {activeTab === 'winners' && renderWinners()}
+              {activeTab === 'payments' && renderPayments()}
+              {activeTab === 'rounds' && renderRounds()}
+              {activeTab === 'promo' && renderPromo()}
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </View>
+      ) : (
+        <>
+          {/* Scrollable Content */}
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {activeTab === 'overview' && renderOverview()}
+            {activeTab === 'members' && renderMembers()}
+            {activeTab === 'winners' && renderWinners()}
+            {activeTab === 'payments' && renderPayments()}
+            {activeTab === 'rounds' && renderRounds()}
+            {activeTab === 'promo' && renderPromo()}
+            <TouchableOpacity style={styles.logoutFooter} onPress={async () => { await logout(); navigate('portal') }} activeOpacity={0.8}>
+              <Ionicons name="log-out-outline" size={18} color="#fff" />
+              <Text style={styles.logoutFooterText}>{t.dashboard.logout}</Text>
+            </TouchableOpacity>
+            <View style={{ height: 100 }} />
+          </ScrollView>
+
+          {/* Floating Bottom Tab Bar */}
+          <View style={styles.bottomBarContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.whiteBottomBar}
+            >
+              {TABS.map((tab) => {
+                const isActive = activeTab === tab.key
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.tabItem, isActive && styles.tabItemActive]}
+                    onPress={() => setActiveTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.tabIconWrapper, isActive && styles.tabIconWrapperActive]}>
+                      <Ionicons
+                        name={tab.icon as any}
+                        size={isActive ? 22 : 20}
+                        color={isActive ? '#fff' : colors.mutedForeground}
+                      />
+                    </View>
+                    <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                      {(a as any)[tab.key] || tab.key}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+          </View>
+        </>
+      )}
 
       <MemberDetailModal
         visible={showMemberModal}
-        user={selectedMember}
-        slots={memberDetailSlots}
-        allSlots={MOCK_SLOTS}
+        user={selectedMember as any}
+        slots={memberDetailSlots as any}
+        allSlots={membersList.flatMap(m => m.slots || []) as any}
         onClose={() => { setShowMemberModal(false); setSelectedMember(null) }}
-        onUpdateUser={(id, name, phone) => {
-          const idx = MOCK_USERS.findIndex(u => u.id === id)
-          if (idx !== -1) {
-            MOCK_USERS[idx] = { ...MOCK_USERS[idx], name, phone }
-            setSelectedMember(MOCK_USERS[idx])
+        onUpdateUser={(id: any, name: string, phone: string) => {
+          const found = membersList.find(m => m.id === id)
+          if (found) {
+            const updated = { ...found, name, phone }
+            setMembersList(prev => prev.map(m => m.id === id ? updated : m))
+            setSelectedMember(updated)
           }
         }}
-        onAssignSlot={(userId, category) => {
-          const count = MOCK_SLOTS.filter(s => s.category === category).length
-          const newSlot: Slot = {
-            id: `s${category}-${count}`,
-            userId,
+        onAssignSlot={(userId: any, category: string) => {
+          const count = membersList.flatMap(m => m.slots || []).filter(s => s.category === category).length
+          const newSlot: AdminSlot = {
+            id: count + 1000,
+            user_id: userId,
+            round_id: null,
             category,
-            slotNumber: count + 1,
-            status: 'active',
+            slot_number: count + 1,
+            status: 'active' as const,
             balance: 0,
-            consecutiveMissedSweeps: 0,
-            depositedToday: false,
+            consecutive_missed_sweeps: 0,
+            deposited_today: false,
+            has_won: false,
+            unique_payment_code: null,
+            payout_code: null,
+            registration_date: new Date().toISOString().slice(0, 10),
           }
-          MOCK_SLOTS.push(newSlot)
-          setMemberDetailSlots(MOCK_SLOTS.filter(s => s.userId === userId))
+          const updatedSlots = [...memberDetailSlots, newSlot]
+          setMemberDetailSlots(updatedSlots)
         }}
-        onRemoveSlot={(slotId) => {
-          const idx = MOCK_SLOTS.findIndex(s => s.id === slotId)
-          if (idx !== -1) {
-            MOCK_SLOTS.splice(idx, 1)
-            if (selectedMember) setMemberDetailSlots(MOCK_SLOTS.filter(s => s.userId === selectedMember.id))
-          }
+        onRemoveSlot={(slotId: any) => {
+          setMemberDetailSlots(prev => prev.filter(s => s.id !== Number(slotId)))
         }}
-        onToggleLien={(slotId) => {
-          const idx = MOCK_SLOTS.findIndex(s => s.id === slotId)
-          if (idx !== -1) {
-            MOCK_SLOTS[idx] = { ...MOCK_SLOTS[idx], status: MOCK_SLOTS[idx].status === 'active' ? 'lien' : 'active' }
-            if (selectedMember) setMemberDetailSlots([...MOCK_SLOTS.filter(s => s.userId === selectedMember.id)])
-            setRounds([...rounds])
-          }
+        onToggleLien={(slotId: any) => {
+          setMemberDetailSlots(prev => prev.map(s => s.id === Number(slotId) ? { ...s, status: s.status === 'active' ? 'lien' : 'active' } : s))
+          setRounds([...rounds])
         }}
       />
 
@@ -2916,20 +2927,18 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
+    gap: spacing.lg,
+    marginBottom: spacing.lg,
   },
   statCard: {
-    borderRadius: 20,
-    padding: 18,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
+    flex: 1,
+    minWidth: '45%',
+    borderRadius: colors.radius.lg,
+    padding: spacing['2xl'],
+    gap: spacing.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: colors.border,
+    backgroundColor: '#ffffff',
   },
   statTopRow: {
     flexDirection: 'row',
@@ -2939,50 +2948,56 @@ const styles = StyleSheet.create({
   statIconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: colors.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 4,
   },
   statValue: {
     fontFamily: fonts.bold,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.foreground,
     letterSpacing: -0.5,
   },
   statLabel: {
     fontFamily: fonts.medium,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.mutedForeground,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   statAccentBar: {
-    height: 3,
-    borderRadius: 2,
+    height: 4,
+    borderRadius: 100,
     overflow: 'hidden',
-    marginTop: 2,
+    marginTop: spacing.sm,
   },
   statAccentBarFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 100,
   },
 
   /* ─── Shared Section ─── */
   sectionCard: {
-    marginBottom: 16,
-    padding: 16,
+    marginBottom: spacing.lg,
+    padding: spacing['2xl'],
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: colors.radius.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  sectionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: colors.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
     fontFamily: fonts.semiBold,
@@ -3169,12 +3184,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   slotBadge: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    paddingVertical: 7,
+    backgroundColor: colors.muted,
+    borderRadius: colors.radius.md,
+    paddingVertical: 6,
     paddingHorizontal: 10,
     flex: 1,
     minWidth: '45%',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   slotBadgeLien: {
     backgroundColor: '#fef2f2',
@@ -3212,47 +3229,49 @@ const styles = StyleSheet.create({
   callBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#ecfdf5',
-    borderRadius: 100,
-    paddingHorizontal: 10,
-    height: 28,
+    gap: 4,
+    backgroundColor: 'transparent',
+    borderRadius: colors.radius.md,
+    paddingHorizontal: 12,
+    height: 32,
+    borderWidth: 1,
+    borderColor: '#05966930',
   },
   callBtnText: {
     fontFamily: fonts.semiBold,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.primary,
   },
   depositBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 100,
-    paddingHorizontal: 10,
-    height: 28,
+    gap: 4,
+    backgroundColor: '#05966915',
+    borderRadius: colors.radius.md,
+    paddingHorizontal: 12,
+    height: 32,
   },
   depositBtnText: {
     fontFamily: fonts.semiBold,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     color: '#059669',
   },
   lienBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#fef2f2',
-    borderRadius: 100,
-    paddingHorizontal: 10,
-    height: 28,
+    gap: 4,
+    backgroundColor: '#ef444415',
+    borderRadius: colors.radius.md,
+    paddingHorizontal: 12,
+    height: 32,
   },
   lienBtnText: {
     fontFamily: fonts.semiBold,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#ef4444',
+    color: colors.destructive,
   },
 
   /* ─── Winner Cards ─── */
@@ -3264,10 +3283,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    borderRadius: 14,
+    borderRadius: colors.radius.lg,
     paddingHorizontal: 12,
     paddingVertical: 10,
     minWidth: 140,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#ffffff',
   },
   winnerStatIconWrap: {
     width: 30,
@@ -3573,10 +3595,12 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: colors.muted,
-    borderRadius: 100,
-    paddingVertical: 13,
+    backgroundColor: 'transparent',
+    borderRadius: colors.radius.md,
+    paddingVertical: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cancelBtnText: {
     fontFamily: fonts.semiBold,
@@ -3587,9 +3611,14 @@ const styles = StyleSheet.create({
   submitBtn: {
     flex: 1,
     backgroundColor: colors.primary,
-    borderRadius: 100,
-    paddingVertical: 13,
+    borderRadius: colors.radius.md,
+    paddingVertical: 12,
     alignItems: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   submitBtnText: {
     fontFamily: fonts.semiBold,
@@ -3599,10 +3628,15 @@ const styles = StyleSheet.create({
   },
   doneBtn: {
     backgroundColor: colors.primary,
-    borderRadius: 100,
-    paddingVertical: 13,
-    paddingHorizontal: 48,
+    borderRadius: colors.radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
     marginTop: 24,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   doneBtnText: {
     fontFamily: fonts.semiBold,
@@ -3611,10 +3645,19 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  /* ─── Round Cards ─── */
+  /* ─── Round Cards (shadcn-inspired) ─── */
   roundCard: {
     marginBottom: 12,
     padding: 14,
+    backgroundColor: '#ffffff',
+    borderRadius: colors.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   roundHeader: {
     flexDirection: 'row',
@@ -3623,14 +3666,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   roundCatBadge: {
-    borderRadius: 100,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+    borderRadius: colors.radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
   roundCatBadgeText: {
     color: '#fff',
     fontFamily: fonts.semiBold,
     fontSize: 10,
+    fontWeight: '600',
+  },
+  roundStatusBadge: {
+    borderRadius: colors.radius.md,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  roundStatusBadgeText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 9,
     fontWeight: '600',
   },
   roundNum: {
@@ -3641,14 +3694,14 @@ const styles = StyleSheet.create({
   },
   roundBar: {
     height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 3,
+    backgroundColor: colors.muted,
+    borderRadius: 100,
     overflow: 'hidden',
     marginBottom: 8,
   },
   roundBarFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 100,
   },
   roundStats: {
     fontFamily: fonts.regular,
@@ -3662,12 +3715,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: colors.primary,
-    borderRadius: 100,
-    paddingVertical: 11,
+    borderRadius: colors.radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   spinBtnText: {
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#fff',
   },
@@ -4227,6 +4286,153 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.mutedForeground,
   },
+
+  /* ─── Desktop Sidebar ─── */
+  desktopLayout: {
+    flexDirection: 'row',
+    flex: 1,
+  },
+  desktopSidebar: {
+    width: 240,
+    backgroundColor: '#ffffff',
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: 'stretch',
+  },
+  sidebarBrand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 8,
+    marginBottom: 24,
+  },
+  sidebarLogo: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sidebarBrandText: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.foreground,
+    letterSpacing: -0.3,
+  },
+  sidebarNav: {
+    flex: 1,
+  },
+  sidebarNavLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    paddingHorizontal: 8,
+    marginBottom: 6,
+  },
+  sidebarTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: colors.radius.md,
+    marginBottom: 2,
+  },
+  sidebarTabActive: {
+    backgroundColor: colors.primary,
+  },
+  sidebarLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.mutedForeground,
+  },
+  sidebarLabelActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  sidebarLogout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: colors.radius.md,
+    marginTop: 8,
+  },
+  sidebarLogoutText: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.destructive,
+  },
+  desktopMain: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  desktopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  desktopHeaderLeft: {
+    flex: 1,
+  },
+  desktopHeaderTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.foreground,
+    letterSpacing: -0.3,
+  },
+  desktopHeaderSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  desktopHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.muted,
+    borderRadius: colors.radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    height: 40,
+    width: 240,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: colors.radius.md,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  desktopScroll: {
+    flex: 1,
+  },
   tabLabelActive: {
     color: '#fff',
     fontWeight: '600',
@@ -4235,11 +4441,13 @@ const styles = StyleSheet.create({
   /* ─── Round Form Modal ─── */
   roundFormModal: {
     backgroundColor: '#fff',
-    borderRadius: 24,
+    borderRadius: colors.radius.xl,
     marginHorizontal: 16,
     width: '100%',
     maxHeight: '90%',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   roundFormHeader: {
     flexDirection: 'row',
@@ -4247,7 +4455,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.border,
   },
   roundFormHeaderLeft: {
     flexDirection: 'row',
@@ -4271,7 +4479,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4287,12 +4495,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   roundFormInput: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
+    backgroundColor: 'transparent',
+    borderRadius: colors.radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    height: 46,
+    borderColor: colors.input,
+    paddingHorizontal: 12,
+    height: 40,
     fontFamily: fonts.regular,
     fontSize: 14,
     color: colors.foreground,
@@ -4305,15 +4513,18 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   roundFormChip: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 100,
-    paddingHorizontal: 16,
-    height: 36,
+    backgroundColor: colors.muted,
+    borderRadius: colors.radius.md,
+    paddingHorizontal: 14,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   roundFormChipActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   roundFormChipText: {
     fontFamily: fonts.medium,

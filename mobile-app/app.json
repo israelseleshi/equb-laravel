@@ -4,25 +4,29 @@
     "slug": "gojo-equb",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/main-logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/main-logo.png",
+        "backgroundColor": "#059669"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.israelseleshi.gojoequb"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/main-logo.png"
     },
     "plugins": [
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "95c54db8-4322-4e12-868d-9bdb1737b494"
+      }
+    }
   }
 }

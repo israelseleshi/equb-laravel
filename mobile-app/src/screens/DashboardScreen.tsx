@@ -46,7 +46,7 @@ import {
 } from '../services/memberData'
 
 import { PaginationBar } from '../components/ui/PaginationBar'
-import { roundsApi } from '../services/api'
+import { roundsApi, memberApi } from '../services/api'
 /* ─── Constants ─── */
 
 const PER_PAGE = 5
@@ -115,6 +115,26 @@ export function DashboardScreen() {
   useEffect(() => {
     if (currentSlot) {
       ;(async () => {
+        // Try to fetch real schedule from API
+        try {
+          const slotIdNum = parseInt(currentSlot.id.replace(/\D/g, ''))
+          if (slotIdNum > 0) {
+            const res = await memberApi.payments(slotIdNum)
+            const apiPayments = res.payments.map((p: { day_index: number; date: string; amount: number; status: string; trans_ref: string | null; method: string | null }) => ({
+              dayIndex: p.day_index,
+              date: p.date,
+              amount: p.amount,
+              status: p.status as 'unpaid' | 'paid',
+              transRef: p.trans_ref || undefined,
+              method: p.method || undefined,
+            }))
+            if (apiPayments.length > 0) {
+              setSchedule(apiPayments)
+              return
+            }
+          }
+        } catch {}
+        // Fallback: local storage
         const schedules = await getAllSchedules()
         const saved = schedules.find((s) => s.slotId === currentSlot.id)
         const paidDays = saved?.payments.filter((p) => p.status === 'paid') || []
@@ -128,6 +148,20 @@ export function DashboardScreen() {
   const stats = useMemo(() => getPaymentStats(schedule), [schedule])
 
   async function loadSavings(slotId: string) {
+    try {
+      const slotIdNum = parseInt(slotId.replace(/\D/g, ''))
+      if (!isNaN(slotIdNum)) {
+        const apiSavings = await memberApi.savings(slotIdNum)
+        setSavings({
+          balance: apiSavings.balance,
+          totalDeposits: apiSavings.total_deposits,
+          totalWithdrawn: apiSavings.total_withdrawn,
+          deposits: apiSavings.deposits.map((d: any) => ({ date: d.created_at?.slice(0,10) || '', amount: d.amount, method: d.method, transRef: d.trans_ref })),
+          withdrawals: apiSavings.withdrawals.map((w: any) => ({ date: w.created_at?.slice(0,10) || '', amount: w.amount, method: w.method, transRef: w.trans_ref, commission: w.commission || 0, netAmount: w.net_amount || w.amount })),
+        })
+        return
+      }
+    } catch {}
     const acct = await getSavings(slotId)
     if (acct) setSavings(acct)
   }
@@ -318,11 +352,25 @@ export function DashboardScreen() {
     let updated: PaymentRecord[]
     if (pendingDayIndices.length === 1) {
       setPayingDay(pendingDayIndices[0])
+      // Try API first
+      try {
+        const slotIdNum = parseInt(currentSlot?.id.replace(/\D/g, '') || '0')
+        if (slotIdNum > 0) {
+          await memberApi.payDay(slotIdNum, pendingDayIndices[0])
+        }
+      } catch {}
       updated = payDay(pendingDayIndices[0], schedule)
       setSchedule(updated)
       setPayingDay(null)
     } else {
       setBatchPaying(true)
+      // Try API first
+      try {
+        const slotIdNum = parseInt(currentSlot?.id.replace(/\D/g, '') || '0')
+        if (slotIdNum > 0) {
+          await memberApi.payMultiple(slotIdNum, pendingDayIndices)
+        }
+      } catch {}
       updated = payMultiple(pendingDayIndices, schedule)
       setSchedule(updated)
       setBatchPaying(false)
@@ -408,6 +456,28 @@ export function DashboardScreen() {
 
   /* ─── Savings Handlers ─── */
   const handleSavingsWithdraw = async () => {
+    // Try API first
+    try {
+      const slotIdNum = parseInt(currentSlot?.id.replace(/\D/g, '') || '0')
+      if (slotIdNum > 0) {
+        const res = await memberApi.withdraw(slotIdNum)
+        if (res.success) {
+          setWithdrawResult({ success: true, withdrawal: res.transaction, commission: res.commission, netAmount: res.net_amount })
+          setShowWithdrawConfirm(true)
+          if (res.transaction && savings) {
+            const updated = {
+              ...savings,
+              balance: savings.balance - res.transaction.amount,
+              totalWithdrawn: savings.totalWithdrawn + res.transaction.amount,
+              withdrawals: [...savings.withdrawals, { date: res.transaction.created_at?.slice(0,10) || '', amount: res.transaction.amount, method: res.transaction.method, transRef: res.transaction.trans_ref, commission: res.transaction.commission || 0, netAmount: res.transaction.net_amount || res.transaction.amount }],
+            }
+            setSavings(updated)
+            if (currentSlot) await saveSavings(currentSlot.id, updated)
+          }
+          return
+        }
+      }
+    } catch {}
     const result = requestWithdrawal(currentSlot?.id || '', savings)
     setWithdrawResult(result)
     setShowWithdrawConfirm(true)
@@ -429,6 +499,22 @@ export function DashboardScreen() {
       showToast(isAm ? 'ቢያንስ 10 ETB ያስገቡ' : 'Minimum 10 ETB', 'info')
       return
     }
+    // Try API first
+    try {
+      const slotIdNum = parseInt(currentSlot?.id.replace(/\D/g, '') || '0')
+      if (slotIdNum > 0) {
+        await memberApi.deposit(slotIdNum, amt)
+        setSavings(prev => ({
+          ...prev,
+          balance: prev.balance + amt,
+          totalDeposits: prev.totalDeposits + amt,
+          deposits: [...prev.deposits, { date: new Date().toISOString().slice(0, 10), amount: amt, method: 'USSD', transRef: 'DEP-' + Date.now() }],
+        }))
+        setDepositAmount('')
+        showToast(isAm ? `${amt} ETB ተቀምጧል` : `${amt} ETB deposited`, 'success')
+        return
+      }
+    } catch {}
     const updated = depositToSavings(savings, amt)
     setSavings(updated)
     setDepositAmount('')
@@ -913,7 +999,7 @@ export function DashboardScreen() {
 
 
         {/* ════════════════ FOOTER ════════════════ */}
-        <TouchableOpacity style={styles.logoutFooter} onPress={async () => { await logout(); navigate('landing') }} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.logoutFooter} onPress={async () => { await logout(); navigate('portal') }} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={18} color="#fff" />
           <Text style={styles.logoutFooterText}>{d.logout}</Text>
         </TouchableOpacity>
@@ -1402,7 +1488,7 @@ export function DashboardScreen() {
                 </>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.lockLogoutBtn} onPress={async () => { await logout(); navigate('landing') }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.lockLogoutBtn} onPress={async () => { await logout(); navigate('portal') }} activeOpacity={0.7}>
               <Ionicons name="log-out-outline" size={14} color="#e2e8f0" />
               <Text style={styles.lockLogoutText}>{isAm ? 'ውጣ' : 'Logout'}</Text>
             </TouchableOpacity>

@@ -134,7 +134,7 @@ export function ForgotPasswordScreen() {
       >
         <View style={styles.headerTop}>
           <TouchableOpacity
-            onPress={() => navigate('login')}
+            onPress={() => navigate('portal')}
             style={styles.backBtn}
             activeOpacity={0.7}
           >
@@ -314,11 +314,11 @@ export function ForgotPasswordScreen() {
 
           <TouchableOpacity
             style={styles.backRow}
-            onPress={() => navigate('login')}
+            onPress={() => navigate('portal')}
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-back" size={16} color={colors.primary} />
-            <Text style={styles.backText}>{fp.backToLogin}</Text>
+            <Text style={styles.backText}>{lang === 'en' ? 'Back to Home' : 'ወደ መነሻ ተመለስ'}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

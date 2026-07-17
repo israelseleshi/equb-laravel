@@ -83,5 +83,5 @@ export function getDaysRemaining(schedule: PaymentRecord[]): number {
 
 export function getCategoryDaily(category: string): number {
   const map: Record<string, number> = { '500': 500, '1000': 1000, '2000': 2000, '5000': 5000, 'savings': 0 }
-  return map[category] || 500
+  return map[category] ?? 500
 }

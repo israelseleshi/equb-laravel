@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native'
+import { View, StyleSheet, TouchableOpacity, ScrollView, Image, Platform } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing } from '../theme'
 import { Text } from '../components/ui/AppText'
@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext'
 import { useTour } from '../context/TourContext'
 import { useTranslation } from '../i18n/useTranslation'
 import { PortalView } from '../screens/PortalView'
+import { WebPortalView } from '../screens/WebPortalView'
 import { DashboardScreen } from '../screens/DashboardScreen'
 import { AdminDashboardScreen } from '../screens/AdminDashboardScreen'
 
@@ -36,7 +37,7 @@ export function MainScreen() {
   const renderContent = () => {
     switch (activeTab) {
       case 'portal':
-        return <PortalView />
+        return Platform.OS === 'web' ? <WebPortalView /> : <PortalView />
       case 'dashboard':
         return <DashboardScreen />
       case 'admin':
@@ -46,7 +47,7 @@ export function MainScreen() {
 
   const handleLogout = async () => {
     await logout()
-    navigate('landing')
+    navigate('portal')
   }
 
   return (

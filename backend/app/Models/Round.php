@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Round extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'name', 'category', 'amount', 'frequency', 'people_goal',
         'current_participants', 'total_rounds', 'winners_per_spin',

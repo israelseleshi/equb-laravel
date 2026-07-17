@@ -1,0 +1,6 @@
+# Playwright / E2E generated artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+/.cache/
+playwright/.last-run.json

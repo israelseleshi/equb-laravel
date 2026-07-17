@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Slot extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'user_id', 'round_id', 'category', 'slot_number', 'status',
         'has_won', 'deal_closed', 'balance',

@@ -105,6 +105,14 @@ export function LoginScreen() {
       >
         <View style={styles.headerTop}>
           <TouchableOpacity
+            onPress={() => navigate('portal')}
+            style={styles.backBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
             onPress={toggleLanguage}
             style={styles.langToggle}
             activeOpacity={0.7}
@@ -290,9 +298,17 @@ const styles = StyleSheet.create({
   },
   headerTop: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     marginBottom: 8,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   langToggle: {
     flexDirection: 'row',

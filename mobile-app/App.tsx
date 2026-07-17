@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar'
-import { StyleSheet, View, ActivityIndicator, TouchableOpacity, Animated } from 'react-native'
+import { StyleSheet, View, ActivityIndicator, TouchableOpacity, Animated, Platform } from 'react-native'
 import * as Font from 'expo-font'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import {
@@ -15,8 +15,9 @@ import {
 } from './src/context/NavigationContext'
 import { AuthProvider, useAuth } from './src/context/AuthContext'
 import { ToastProvider } from './src/components/ui/Toast'
-import { LandingScreen } from './src/screens/LandingScreen'
 import { PortalView } from './src/screens/PortalView'
+import { WebPortalView } from './src/screens/WebPortalView'
+import { WebFrame } from './src/components/WebFrame'
 import { LoginScreen } from './src/screens/LoginScreen'
 import { SignupScreen } from './src/screens/SignupScreen'
 import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen'
@@ -92,15 +93,6 @@ function ScreenRouter() {
     if (currentScreen === 'portal') setPublicTab('home')
   }, [currentScreen])
 
-  useEffect(() => {
-    if (!role || (currentScreen !== 'landing' && currentScreen !== 'portal')) return
-    if (role === 'admin') {
-      navigate('authGate')
-    } else {
-      navigate('dashboard')
-    }
-  }, [role, currentScreen, navigate])
-
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -114,7 +106,7 @@ function ScreenRouter() {
   const renderPublicContent = () => {
     switch (publicTab) {
       case 'home':
-        return <PortalView />
+        return Platform.OS === 'web' ? <WebPortalView /> : <PortalView />
       case 'dashboard':
         return <DashboardPage />
       case 'others':
@@ -144,7 +136,7 @@ function ScreenRouter() {
   }
 
   if (isPublicScreen) {
-    return (
+    const content = (
       <View style={styles.publicLayout}>
         <View style={styles.publicContent}>
           {renderPublicContent()}
@@ -152,32 +144,34 @@ function ScreenRouter() {
         <BottomTabBar activeTab={publicTab} onTabChange={setPublicTab} />
       </View>
     )
+    return Platform.OS === 'web' ? <WebFrame>{content}</WebFrame> : content
   }
 
+  const web = Platform.OS === 'web'
   switch (currentScreen) {
-    case 'landing':
-      return <LandingScreen />
     case 'login':
-      return <LoginScreen />
+      return web ? <WebFrame centered><LoginScreen /></WebFrame> : <LoginScreen />
     case 'signup':
-      return <SignupScreen />
+      return web ? <WebFrame centered><SignupScreen /></WebFrame> : <SignupScreen />
     case 'forgotPassword':
-      return <ForgotPasswordScreen />
+      return web ? <WebFrame centered><ForgotPasswordScreen /></WebFrame> : <ForgotPasswordScreen />
     case 'onboarding':
-      return <OnboardingWizardScreen />
+      return web ? <WebFrame><OnboardingWizardScreen /></WebFrame> : <OnboardingWizardScreen />
     case 'admin':
-      return <AdminDashboardScreen />
+      return web ? <WebFrame><AdminDashboardScreen /></WebFrame> : <AdminDashboardScreen />
     case 'authGate':
-      return (
-        <AuthGate
-          onSuccess={() => navigate('admin')}
-          onCancel={() => navigate('landing')}
-        />
+      return web ? (
+        <WebFrame centered>
+          <AuthGate onSuccess={() => navigate('admin')} onCancel={() => navigate('portal')} />
+        </WebFrame>
+      ) : (
+        <AuthGate onSuccess={() => navigate('admin')} onCancel={() => navigate('portal')} />
       )
     case 'main':
       return <MainScreen />
     default:
-      return <LandingScreen />
+      navigate('portal')
+      return null
   }
 }
 

@@ -3,15 +3,12 @@
 namespace App\Events;
 
 use App\Models\Category;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
-class CategoryConfigurationChanged implements ShouldBroadcast
+class CategoryConfigurationChanged
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
     public Category $category;
 
@@ -27,17 +24,5 @@ class CategoryConfigurationChanged implements ShouldBroadcast
         $this->action = $action;
         $this->changedFields = $changedFields;
         $this->snapshot = $category->toArray();
-    }
-
-    public function broadcastOn(): array
-    {
-        return [
-            new Channel('equb.categories'),
-        ];
-    }
-
-    public function broadcastAs(): string
-    {
-        return 'category.configuration.changed';
     }
 }

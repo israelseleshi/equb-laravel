@@ -72,7 +72,7 @@ export function generateRef(): string {
 
 export function getCategoryDaily(category: string): number {
   const map: Record<string, number> = { '500': 500, '1000': 1000, '2000': 2000, '5000': 5000, 'savings': 0 }
-  return map[category] || 500
+  return map[category] ?? 500
 }
 
 export function formatDate(dateStr: string, lang: 'en' | 'am' = 'en'): string {
@@ -94,7 +94,7 @@ export function toLocale(n: number): string {
 
 export function generateSchedule(category: string, regDate: string): PaymentRecord[] {
   const daily = getCategoryDaily(category)
-  if (!regDate) return []
+  if (daily === 0 || !regDate) return []
   const start = new Date(regDate + 'T00:00:00')
   if (isNaN(start.getTime())) return []
   const daysInCycle = 30

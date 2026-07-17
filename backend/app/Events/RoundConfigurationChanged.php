@@ -3,15 +3,12 @@
 namespace App\Events;
 
 use App\Models\Round;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
-class RoundConfigurationChanged implements ShouldBroadcast
+class RoundConfigurationChanged
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
     public Round $round;
 
@@ -27,17 +24,5 @@ class RoundConfigurationChanged implements ShouldBroadcast
         $this->action = $action;
         $this->changedFields = $changedFields;
         $this->snapshot = $round->toArray();
-    }
-
-    public function broadcastOn(): array
-    {
-        return [
-            new Channel('equb.rounds'),
-        ];
-    }
-
-    public function broadcastAs(): string
-    {
-        return 'round.configuration.changed';
     }
 }

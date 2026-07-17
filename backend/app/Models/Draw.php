@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Draw extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'spin_id', 'round', 'round_id', 'category', 'winning_slot',
         'winner_name', 'net_payout', 'commission_amount',
