@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react'
-import { View, StyleSheet, Animated, Easing, Vibration, Dimensions, Platform } from 'react-native'
+import { View, StyleSheet, Animated, Easing, Vibration, Dimensions, Platform, Pressable } from 'react-native'
 import { Accelerometer } from 'expo-sensors'
 import Svg, { Path, Rect, Circle, Ellipse, Text as SvgText, Defs, LinearGradient, Stop, G } from 'react-native-svg'
 import { colors } from '../theme'
@@ -16,15 +16,6 @@ const DARK_GREEN = '#1B725A'
 
 const CONFETTI_COLORS = ['#059669', '#10b981', '#34d399', '#f59e0b', '#fbbf24', '#fff']
 const CONFETTI_COUNT = 28
-
-const ORBIT_RADIUS = CUP_SIZE * 0.7
-const ORBIT_SLOTS = [
-  { id: 1, label: '1', angle: 0, color: '#059669' },
-  { id: 2, label: '2', angle: 72, color: '#10b981' },
-  { id: 3, label: '3', angle: 144, color: '#34d399' },
-  { id: 4, label: '4', angle: 216, color: '#047857' },
-  { id: 5, label: '5', angle: 288, color: '#065f46' },
-]
 
 const SHAKE_THRESHOLD = 2.0
 const SHAKE_DEBOUNCE_MS = 800
@@ -80,7 +71,6 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
   const shakeAnim = useRef(new Animated.Value(0)).current
   const revealProgress = useRef(new Animated.Value(0)).current
   const confettiAnim = useRef(new Animated.Value(0)).current
-  const orbitAnim = useRef(new Animated.Value(0)).current
   const floatPhase = useRef(new Animated.Value(0)).current
   const winnersOrbitAnim = useRef(new Animated.Value(0)).current
   const lidAnim = useRef(new Animated.Value(0)).current
@@ -145,7 +135,7 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
       toValue: 1,
       duration: 3000,
       easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
+      useNativeDriver: nativeDriver,
     }).start()
   }, [confettiAnim])
 
@@ -153,33 +143,12 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
     floatPhase.setValue(0)
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatPhase, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(floatPhase, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(floatPhase, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: nativeDriver }),
+        Animated.timing(floatPhase, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: nativeDriver }),
       ]),
       { iterations: -1 },
     ).start()
   }, [floatPhase])
-
-  const startOrbitLoop = useCallback(() => {
-    orbitAnim.setValue(0)
-    Animated.loop(
-      Animated.timing(orbitAnim, {
-        toValue: 1,
-        duration: 1400,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ).start()
-  }, [orbitAnim])
-
-  const stopOrbitLoop = useCallback(() => {
-    orbitAnim.setValue(0)
-  }, [orbitAnim])
-
-  const orbitAngle = orbitAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  })
 
   const startWinnersOrbit = useCallback(() => {
     winnersOrbitAnim.setValue(0)
@@ -188,7 +157,7 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
         toValue: 1,
         duration: 6000 + totalWinners * 500,
         easing: Easing.linear,
-        useNativeDriver: true,
+        useNativeDriver: nativeDriver,
       }),
     ).start()
   }, [winnersOrbitAnim, totalWinners])
@@ -247,16 +216,22 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
     return (index / total) * 360 - 90
   }
 
+  const vibrate = useCallback((ms: number) => {
+    try { Vibration.vibrate(ms) } catch {}
+  }, [])
+
+  const nativeDriver = Platform.OS !== 'web'
+
   const revealAllWinners = useCallback(() => {
     startConfetti()
-    Vibration.vibrate(60)
+    vibrate(60)
     revealProgress.setValue(0)
 
     Animated.spring(revealProgress, {
       toValue: 1,
       stiffness: 60,
       damping: 14,
-      useNativeDriver: true,
+      useNativeDriver: nativeDriver,
     }).start(() => {
       setPhase('result')
       isAnimating.current = false
@@ -266,52 +241,51 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
   }, [revealProgress, startConfetti, startFloatLoop, startWinnersOrbit])
 
   const animateToReveal = useCallback(() => {
-    Vibration.vibrate(200)
+    vibrate(200)
     revealProgress.setValue(0)
     lidAnim.setValue(0)
     tokenPopAnim.setValue(0)
     setPhase('shaking')
-    startOrbitLoop()
 
     Animated.sequence([
       Animated.timing(shakeAnim, {
         toValue: 1,
         duration: 3000,
         easing: Easing.inOut(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: nativeDriver,
       }),
       Animated.timing(shakeAnim, {
         toValue: 0,
         duration: 150,
         easing: Easing.linear,
-        useNativeDriver: true,
+        useNativeDriver: nativeDriver,
       }),
       Animated.timing(lidAnim, {
         toValue: 1,
         duration: 350,
         easing: Easing.out(Easing.circle),
-        useNativeDriver: true,
+        useNativeDriver: nativeDriver,
       }),
       Animated.spring(tokenPopAnim, {
         toValue: 1,
         stiffness: 100,
         damping: 12,
-        useNativeDriver: true,
+        useNativeDriver: nativeDriver,
       }),
       Animated.delay(600),
     ]).start(() => {
-      stopOrbitLoop()
       setPhase('reveal')
-      Vibration.vibrate(100)
+      vibrate(100)
       revealAllWinners()
     })
-  }, [shakeAnim, revealProgress, revealAllWinners, startOrbitLoop, stopOrbitLoop, lidAnim, tokenPopAnim])
+  }, [shakeAnim, revealProgress, revealAllWinners, lidAnim, tokenPopAnim])
 
   const startShake = useCallback(async () => {
     if (isAnimating.current || disabled) return
     isAnimating.current = true
     setResult(null)
     setError(null)
+    setPhase('shaking')
 
     if (onShake) {
       try {
@@ -319,6 +293,7 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
         if (!res || !res.winner || !res.winners || res.winners.length === 0) {
           setError(isAmharic ? 'ዕጣ አልተገኘም' : 'No draw result')
           isAnimating.current = false
+          setPhase('idle')
           return
         }
         setResult(res)
@@ -326,8 +301,9 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
         animateToReveal()
         onShakeEnd?.(res)
       } catch (e: any) {
-        setError(e?.message || (isAmharic ? 'ዕጣ ማውጣት አልተሳካም' : 'Draw failed'))
+        setError(e?.message || (isAmharic ? 'ዕጣ ማውጣት አልተሳካልም' : 'Draw failed'))
         isAnimating.current = false
+        setPhase('idle')
       }
     } else {
       onShakeStart?.()
@@ -402,9 +378,10 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
   }, [phase, allWinners.length, safeResetAnimating, clearShakeTimeout])
 
   const handleShakePress = useCallback(() => {
+    console.log('[DiceShaker] handleShakePress triggered', { isAnimating: isAnimating.current, disabled, phase })
     clearShakeTimeout()
     startShake()
-  }, [startShake, clearShakeTimeout])
+  }, [startShake, clearShakeTimeout, disabled, phase])
 
   const handleReset = useCallback(() => {
     clearShakeTimeout()
@@ -415,11 +392,10 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
     shakeAnim.setValue(0)
     revealProgress.setValue(0)
     floatPhase.setValue(0)
-    orbitAnim.setValue(0)
     winnersOrbitAnim.setValue(0)
     lidAnim.setValue(0)
     tokenPopAnim.setValue(0)
-  }, [shakeAnim, revealProgress, floatPhase, orbitAnim, winnersOrbitAnim, lidAnim, tokenPopAnim, clearShakeTimeout])
+  }, [shakeAnim, revealProgress, floatPhase, winnersOrbitAnim, lidAnim, tokenPopAnim, clearShakeTimeout])
 
   const cupContent = (() => {
     if (isShaking) {
@@ -493,6 +469,10 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
         </View>
       ) : null}
 
+      <Pressable
+        onPress={Platform.OS === 'web' && isIdle && !disabled ? handleShakePress : undefined}
+        style={styles.cupAreaPressable}
+      >
       <View style={styles.cupArea}>
         <Animated.View
           style={[
@@ -653,32 +633,6 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
           </View>
         </Animated.View>
 
-        {/* ─── Orbiting Slot Dice ─── */}
-        {isShaking ? (
-          <Animated.View style={[styles.orbitRing, { transform: [{ rotate: orbitAngle }] }]} pointerEvents="none">
-            {ORBIT_SLOTS.map((slot) => {
-              const angleRad = (slot.angle * Math.PI) / 180
-              return (
-                <Animated.View
-                  key={slot.id}
-                  style={[
-                    styles.orbitDice,
-                    {
-                      backgroundColor: slot.color,
-                      transform: [
-                        { translateX: Math.cos(angleRad) * ORBIT_RADIUS },
-                        { translateY: Math.sin(angleRad) * ORBIT_RADIUS },
-                      ],
-                    },
-                  ]}
-                >
-                  <Text style={styles.orbitDiceText}>{slot.label}</Text>
-                </Animated.View>
-              )
-            })}
-          </Animated.View>
-        ) : null}
-
         {/* ─── Winner Tokens Pop-out from Jar ─── */}
         {isRevealing || isResult ? (
           <View style={styles.winnersArena} pointerEvents="none">
@@ -751,17 +705,26 @@ export const DiceShaker = forwardRef<DiceShakerHandle, DiceShakerProps>(function
           </Animated.View>
         ) : null}
       </View>
+      </Pressable>
 
       {error ? (
         <Text style={styles.errorText}>{error}</Text>
       ) : null}
 
       {isIdle && !disabled && (
-        <View style={styles.shakeHint}>
-          <Text style={styles.shakeHintText}>
-            {isAmharic ? 'ስልክዎን ያንቀሳቁ' : 'Shake your phone to draw'}
-          </Text>
-        </View>
+        Platform.OS === 'web' ? (
+          <Pressable style={({ pressed }) => [styles.shakeHint, pressed && styles.shakeHintPressed]} onPress={handleShakePress}>
+            <Text style={styles.shakeHintText}>
+              {isAmharic ? 'ዕጣ ለማውጣት ይጫኑ' : 'Tap to draw'}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.shakeHint}>
+            <Text style={styles.shakeHintText}>
+              {isAmharic ? 'ስልክዎን ያንቀሳቁ' : 'Shake your phone to draw'}
+            </Text>
+          </View>
+        )
       )}
     </View>
   )
@@ -969,6 +932,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.mutedForeground,
   },
+  cupAreaPressable: {
+    width: '100%',
+    alignItems: 'center',
+    cursor: 'pointer',
+  },
   shakeHint: {
     marginTop: 8,
     backgroundColor: '#E6F4EA',
@@ -979,6 +947,10 @@ const styles = StyleSheet.create({
     borderColor: '#bbf7d0',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  shakeHintPressed: {
+    backgroundColor: '#d1fae5',
+    transform: [{ scale: 0.97 }],
   },
   shakeHintText: {
     fontSize: 13,
@@ -997,32 +969,5 @@ const styles = StyleSheet.create({
     zIndex: 50,
     overflow: 'hidden',
   },
-  orbitRing: {
-    position: 'absolute',
-    top: CUP_SIZE * 0.5 - 16,
-    left: CUP_SIZE * 0.5 - 16,
-    width: 32,
-    height: 32,
-    zIndex: 5,
-  },
-  orbitDice: {
-    position: 'absolute',
-    top: -12,
-    left: -12,
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 4,
-  },
-  orbitDiceText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#fff',
-  },
 })
+

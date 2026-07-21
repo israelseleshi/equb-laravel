@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native'
+import { useEffect, useMemo } from 'react'
+import { View, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { colors, spacing } from '../theme'
@@ -10,7 +10,7 @@ import { TourTarget } from '../components/TourTarget'
 import { useAuth } from '../context/AuthContext'
 import { useNavigation } from '../context/NavigationContext'
 import { useTranslation } from '../i18n/useTranslation'
-import { DiceShaker, type DiceShakerHandle, type ShakeResult } from '../components/DiceShaker'
+import { LuckyJarSection } from '../components/LuckyJarSection'
 import { useEqubStore } from '../store/equbStore'
 
 const BRAND_GREEN = '#059669'
@@ -24,9 +24,6 @@ export function PortalView() {
   const { user } = useAuth()
   const { t, lang } = useTranslation()
   const { navigate } = useNavigation()
-  const diceShakerRef = useRef<DiceShakerHandle>(null)
-  const [shakerError, setShakerError] = useState<string | null>(null)
-  const [isShaking, setIsShaking] = useState(false)
 
   const store = useEqubStore()
   const rounds = useEqubStore(s => s.rounds)
@@ -41,8 +38,6 @@ export function PortalView() {
     [rounds],
   )
 
-  // Informational only: what pools exist, their round, goal and status.
-  // This strip does NOT filter the draw — the shake is a single global jar.
   const tierCards = useMemo(() => {
     const source = rounds.filter(r => r.status === 'active' || r.status === 'draft')
     if (source.length > 0) {
@@ -63,51 +58,31 @@ export function PortalView() {
     return [{ code: '500', currentRound: 1, filledSlots: 0, totalSlots: 10, progressPct: 0, status: 'draft' }]
   }, [rounds])
 
-  // Unified global jar: total eligible entries across every active round.
   const eligibleCount = useMemo(
     () => activeRounds.reduce((sum, r) => sum + (r.current_participants ?? 0), 0),
     [activeRounds],
   )
 
-  const demoShake = useCallback((): ShakeResult => {
-    const cats = ['100', '500', '1000', '2000', '5000']
-    const winners = Array.from({ length: 5 }, (_, i) => {
-      const cat = cats[i % cats.length]
-      const roundNumber = activeRounds.find(r => r.category === cat)?.current_round_number ?? 1
-      return {
-        slot_id: 9000 + i,
-        slot_number: i + 1,
-        category: cat,
-        round_id: null,
-        user_id: 9000 + i,
-        round_number: roundNumber,
-      }
-    })
-    return {
-      draw: {},
-      winner: winners[0],
-      winners,
-      total_eligible: eligibleCount || 10,
-    }
-  }, [activeRounds, eligibleCount])
+  const jarPrizes = useMemo(
+    () => tierCards.map((card, i) => ({
+      id: String(i),
+      amount: `${card.code} ETB`,
+      slot: `SLOT #${card.filledSlots || i + 1}`,
+      r: `R-${card.currentRound}`,
+      color: ['#00b080', '#00a375', '#10b981', '#00c27a', '#008f6b'][i % 5],
+    })),
+    [tierCards],
+  )
 
-  const handleShake = useCallback(async () => {
-    setIsShaking(true)
-    setShakerError(null)
-    try {
-      const res = await store.runShakeDrawAction({ is_all: true })
-      store.fetchCategories()
-      store.fetchRounds()
-      if (!res || !res.winners || res.winners.length === 0) {
-        return demoShake()
-      }
-      return res
-    } catch {
-      return demoShake()
-    } finally {
-      setIsShaking(false)
-    }
-  }, [store, demoShake])
+  const jarParticipants = useMemo(() => {
+    const count = Math.min(eligibleCount || 5, 20)
+    const colors = ['#34d399', '#60a5fa', '#f472b6', '#fbbf24', '#a78bfa', '#fb923c', '#2dd4bf', '#e879f9', '#22d3ee', '#a3e635']
+    return Array.from({ length: count }, (_, i) => ({
+      id: `p${i}`,
+      name: `${lang === 'en' ? 'Player' : 'ተወዳዳሪ'} ${i + 1}`,
+      avatarColor: colors[i % colors.length],
+    }))
+  }, [eligibleCount, lang])
 
   const appT = t.app
   const isAuthed = user !== null
@@ -184,7 +159,7 @@ export function PortalView() {
         <Card style={styles.wheelCard}>
           <View style={styles.wheelHeader}>
             <Text style={styles.sectionTitle}>
-              {lang === 'en' ? "Today's Winner — All Rounds" : 'የዛሬ አሸናፊ ከ ሁሉም ዙር'}
+              {lang === 'en' ? "Today's Winner — Lucky Jar" : 'የዛሬ አሸናፊ — እድለኛ ድስት'}
             </Text>
             <Text style={styles.wheelBadge}>11:00 AM</Text>
           </View>
@@ -194,32 +169,7 @@ export function PortalView() {
               : `${eligibleCount} ተፎካካሪዎች · ${tierCards.length} ፖሎች`}
           </Text>
           <View style={styles.wheelContainer}>
-            {eligibleCount === 0 && !isShaking ? (
-              <View style={styles.pendingState}>
-                <Ionicons name="time-outline" size={40} color={colors.mutedForeground} />
-                <Text style={styles.pendingText}>
-                  {lang === 'en' ? 'No Active Round' : 'ንቁ ዙር የለም'}
-                </Text>
-                <Text style={styles.pendingSubtext}>
-                  {lang === 'en'
-                    ? 'The unified jar is empty until rounds open with paid slots.'
-                    : 'ንቁ ዙሮች የተከፈሉ ቦታዎች ያላቸው ድረስ የተዋሐደ ጥምቀት ባለበገና ነው።'}
-                </Text>
-              </View>
-            ) : (
-              <>
-                <DiceShaker
-                  ref={diceShakerRef}
-                  eligibleCount={eligibleCount}
-                  disabled={isShaking}
-                  onShake={handleShake}
-                  isAmharic={lang === 'am'}
-                />
-                {shakerError ? (
-                  <Text style={styles.errorText}>{shakerError}</Text>
-                ) : null}
-              </>
-            )}
+            <LuckyJarSection prizes={jarPrizes} participants={jarParticipants} eligibleCount={eligibleCount} />
           </View>
         </Card>
       </TourTarget>
@@ -417,32 +367,6 @@ const styles = StyleSheet.create({
   wheelContainer: {
     alignItems: 'center',
     gap: spacing.lg,
-  },
-  spinBtn: {
-    marginTop: spacing.sm,
-  },
-  pendingState: {
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    width: '100%',
-  },
-  pendingText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.mutedForeground,
-  },
-  pendingSubtext: {
-    fontSize: 11,
-    color: colors.mutedForeground,
-    textAlign: 'center',
-  },
-  errorText: {
-    fontSize: 12,
-    color: colors.destructive,
-    textAlign: 'center',
-    paddingHorizontal: 16,
   },
   registerCard: {
     marginHorizontal: spacing.lg,
