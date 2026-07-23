@@ -9,6 +9,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Accelerometer } from 'expo-sensors'
 import Svg, { Path, Rect, Ellipse, Defs, LinearGradient as SvgGradient, RadialGradient as SvgRadialGradient, Stop, Polyline } from 'react-native-svg'
 import { Text } from './ui/AppText'
 import { useTranslation } from '../i18n/useTranslation'
@@ -209,12 +210,13 @@ export function LuckyJarSection({
   const [releasedIndexes, setReleasedIndexes] = useState<number[]>([])
   const [isReleasing, setIsReleasing] = useState(false)
   const [assignments, setAssignments] = useState<Record<string, { name: string; avatarColor: string }>>({})
-  const [statusText, setStatusText] = useState(lang === 'en' ? 'Tap to draw' : 'ይጫኑ')
 
   const lidAnim = useRef(new Animated.Value(0)).current
   const glowAnim = useRef(new Animated.Value(0)).current
   const shakeAnim = useRef(new Animated.Value(0)).current
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
+  const lastShakeTime = useRef(0)
+  const shakeDetector = useRef<{ remove: () => void } | null>(null)
 
   const shakeX = shakeAnim.interpolate({
     inputRange: shakeInputRange,
@@ -235,7 +237,6 @@ export function LuckyJarSection({
 
     if (!isOpen) {
       setIsShaking(true)
-      setStatusText(lang === 'en' ? 'Spinning...' : 'እየተዘዋወረ ነው...')
       shakeAnim.setValue(0)
 
       Animated.timing(shakeAnim, {
@@ -249,7 +250,6 @@ export function LuckyJarSection({
         setIsOpen(true)
         setIsReleasing(true)
         setReleasedIndexes([])
-        setStatusText(lang === 'en' ? 'Drawing...' : 'ዕጣ እየወጣ ነው...')
 
         const shuffled = [...participants].sort(() => 0.5 - Math.random())
         const newAssignments: Record<string, { name: string; avatarColor: string }> = {}
@@ -268,13 +268,9 @@ export function LuckyJarSection({
             setReleasedIndexes(prev => [...prev, i])
             const prize = prizes[i]
             const w = newAssignments[prize.id]
-            if (w) {
-              setStatusText(lang === 'en' ? `${w.name} won ${prize.amount}!` : `${w.name} ${prize.amount} አሸነፉ!`)
-            }
             if (i === prizes.length - 1) {
               const doneT = setTimeout(() => {
                 setIsReleasing(false)
-                setStatusText(lang === 'en' ? 'All prizes drawn!' : 'ሁሉም ዕጣዎች ወጥተዋል!')
               }, 2200)
               timeoutRefs.current.push(doneT)
             }
@@ -288,7 +284,6 @@ export function LuckyJarSection({
       setIsReleasing(false)
       setReleasedIndexes([])
       setAssignments({})
-      setStatusText(lang === 'en' ? 'Tap to draw' : 'ይጫኑ')
       Animated.spring(lidAnim, {
         toValue: 0, stiffness: 300, damping: 20,
         useNativeDriver: Platform.OS !== 'web',
@@ -310,7 +305,25 @@ export function LuckyJarSection({
     }
   }, [isOpen, isReleasing])
 
-  const lidY = lidAnim.interpolate({ inputRange: [0, 1], outputRange: [6, -59] })
+  const handleToggleRef = useRef(handleToggle)
+  handleToggleRef.current = handleToggle
+
+  useEffect(() => {
+    Accelerometer.setUpdateInterval(150)
+    shakeDetector.current = Accelerometer.addListener(({ x, y, z }) => {
+      const mag = Math.sqrt(x * x + y * y + z * z)
+      const now = Date.now()
+      if (mag > 2.2 && now - lastShakeTime.current > 1000) {
+        lastShakeTime.current = now
+        handleToggleRef.current()
+      }
+    })
+    return () => {
+      shakeDetector.current?.remove()
+    }
+  }, [])
+
+  const lidY = lidAnim.interpolate({ inputRange: [0, 1], outputRange: [12, -53] })
   const lidRotate = lidAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-15deg'] })
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] })
 
@@ -405,10 +418,6 @@ export function LuckyJarSection({
             </View>
           </TouchableOpacity>
         </Animated.View>
-      </View>
-
-      <View style={styles.statusRow}>
-        <Text style={styles.statusText}>{statusText}</Text>
       </View>
 
       {isOpen && (
