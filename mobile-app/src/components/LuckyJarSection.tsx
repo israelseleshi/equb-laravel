@@ -444,9 +444,7 @@ const styles = StyleSheet.create({
   canvas: {
     width: '100%',
     maxWidth: 420,
-    height: 520,
     alignItems: 'center',
-    justifyContent: 'center',
     position: 'relative',
   },
   arenaGlow: {
@@ -577,7 +575,6 @@ const styles = StyleSheet.create({
   jarSection: {
     alignItems: 'center',
     zIndex: 10,
-    marginBottom: 20,
   },
   jarShakeContainer: {
     alignItems: 'center',
