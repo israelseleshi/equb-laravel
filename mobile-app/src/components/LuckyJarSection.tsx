@@ -331,7 +331,8 @@ export function LuckyJarSection({
     }
   }, [])
 
-  const lidY = lidAnim.interpolate({ inputRange: [0, 1], outputRange: [12, -53] })
+  const lidY = lidAnim.interpolate({ inputRange: [0, 1], outputRange: [20, -65] })
+  const lidX = lidAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 60] })
   const lidRotate = lidAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-15deg'] })
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] })
 
@@ -368,7 +369,7 @@ export function LuckyJarSection({
             },
           ]}
         >
-          <Animated.View style={[styles.lidWrap, { transform: [{ translateY: lidY }, { rotate: lidRotate }] }]}>
+          <Animated.View style={[styles.lidWrap, isOpen && styles.lidWrapOpen, { transform: [{ translateX: lidX }, { translateY: lidY }, { rotate: lidRotate }] }]}>
             <View style={styles.lidKnob} />
             <View style={styles.lidCap} />
           </Animated.View>
@@ -481,7 +482,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
+    zIndex: 30,
   },
   badgeOuter: {
     position: 'absolute',
@@ -588,6 +589,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
     marginBottom: -2,
+  },
+  lidWrapOpen: {
+    zIndex: 10,
   },
   lidKnob: {
     width: 32,
