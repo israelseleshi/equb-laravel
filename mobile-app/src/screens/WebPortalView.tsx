@@ -21,7 +21,7 @@ const CARD_GAP = 8
 const SNAP_INTERVAL = CARD_WIDTH + CARD_GAP
 const TABLET_BREAK = 640
 const { width: SCREEN_W } = Dimensions.get('window')
-const isNarrow = SCREEN_W < TABLET_BREAK
+const isNarrow = true // TEMP: force mobile layout on PC
 
 /* ─── Phone App Layout (narrow) ─── */
 function PhoneLayout({
