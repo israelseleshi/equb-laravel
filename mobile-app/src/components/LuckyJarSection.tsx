@@ -308,7 +308,6 @@ export function LuckyJarSection({
   handleToggleRef.current = handleToggle
 
   useEffect(() => {
-    if (Platform.OS === 'web') return
     let sub: { remove: () => void } | null = null
     try {
       const { Accelerometer } = require('expo-sensors')
@@ -338,7 +337,6 @@ export function LuckyJarSection({
 
   return (
     <View style={styles.canvas}>
-      <Animated.View style={[styles.arenaGlow, { opacity: glowOpacity }]} />
 
       {isOpen && <View style={styles.circlePath} />}
 
@@ -375,7 +373,6 @@ export function LuckyJarSection({
           </Animated.View>
 
           <TouchableOpacity onPress={handleToggle} activeOpacity={0.9} style={styles.jarTouch}>
-            <View style={styles.jarGlowStripe} />
 
             <Svg width={208} height={176} viewBox="0 0 200 170">
               <Defs>
@@ -599,8 +596,6 @@ const styles = StyleSheet.create({
     backgroundColor: JAR_DEEP,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    borderTopWidth: 2,
-    borderColor: '#34d399',
   },
   lidCap: {
     width: 96,
