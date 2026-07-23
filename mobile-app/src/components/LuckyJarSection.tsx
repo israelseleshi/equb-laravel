@@ -214,8 +214,6 @@ export function LuckyJarSection({
   const glowAnim = useRef(new Animated.Value(0)).current
   const shakeAnim = useRef(new Animated.Value(0)).current
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
-  const lastShakeTime = useRef(0)
-  const shakeDetector = useRef<{ remove: () => void } | null>(null)
 
   const shakeX = shakeAnim.interpolate({
     inputRange: shakeInputRange,
@@ -303,32 +301,6 @@ export function LuckyJarSection({
       Animated.timing(glowAnim, { toValue: 0, duration: 200, useNativeDriver: Platform.OS !== 'web' }).start()
     }
   }, [isOpen, isReleasing])
-
-  const handleToggleRef = useRef(handleToggle)
-  handleToggleRef.current = handleToggle
-
-  useEffect(() => {
-    let sub: { remove: () => void } | null = null
-    try {
-      const { Accelerometer } = require('expo-sensors')
-      if (Accelerometer && Accelerometer.addListener) {
-        Accelerometer.setUpdateInterval(150)
-        sub = Accelerometer.addListener(({ x, y, z }: { x: number; y: number; z: number }) => {
-          const mag = Math.sqrt(x * x + y * y + z * z)
-          const now = Date.now()
-          if (mag > 2.2 && now - lastShakeTime.current > 1000) {
-            lastShakeTime.current = now
-            handleToggleRef.current()
-          }
-        })
-      }
-    } catch {
-      // Accelerometer not available
-    }
-    return () => {
-      sub?.remove()
-    }
-  }, [])
 
   const lidY = lidAnim.interpolate({ inputRange: [0, 1], outputRange: [12, -53] })
   const lidRotate = lidAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-15deg'] })
