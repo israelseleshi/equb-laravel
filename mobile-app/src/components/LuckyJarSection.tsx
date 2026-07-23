@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
   canvas: {
     width: '100%',
     maxWidth: 420,
-    minHeight: 460,
+    height: 500,
     alignItems: 'center',
     position: 'relative',
   },
