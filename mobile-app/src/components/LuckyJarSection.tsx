@@ -9,7 +9,6 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
-import { Accelerometer } from 'expo-sensors'
 import Svg, { Path, Rect, Ellipse, Defs, LinearGradient as SvgGradient, RadialGradient as SvgRadialGradient, Stop, Polyline } from 'react-native-svg'
 import { Text } from './ui/AppText'
 import { useTranslation } from '../i18n/useTranslation'
@@ -309,17 +308,25 @@ export function LuckyJarSection({
   handleToggleRef.current = handleToggle
 
   useEffect(() => {
-    Accelerometer.setUpdateInterval(150)
-    shakeDetector.current = Accelerometer.addListener(({ x, y, z }) => {
-      const mag = Math.sqrt(x * x + y * y + z * z)
-      const now = Date.now()
-      if (mag > 2.2 && now - lastShakeTime.current > 1000) {
-        lastShakeTime.current = now
-        handleToggleRef.current()
+    let sub: { remove: () => void } | null = null
+    try {
+      const { Accelerometer } = require('expo-sensors')
+      if (Accelerometer && Accelerometer.addListener) {
+        Accelerometer.setUpdateInterval(150)
+        sub = Accelerometer.addListener(({ x, y, z }: { x: number; y: number; z: number }) => {
+          const mag = Math.sqrt(x * x + y * y + z * z)
+          const now = Date.now()
+          if (mag > 2.2 && now - lastShakeTime.current > 1000) {
+            lastShakeTime.current = now
+            handleToggleRef.current()
+          }
+        })
       }
-    })
+    } catch {
+      // Accelerometer not available
+    }
     return () => {
-      shakeDetector.current?.remove()
+      sub?.remove()
     }
   }, [])
 
