@@ -444,6 +444,7 @@ const styles = StyleSheet.create({
   canvas: {
     width: '100%',
     maxWidth: 420,
+    minHeight: 460,
     alignItems: 'center',
     position: 'relative',
   },
@@ -575,6 +576,7 @@ const styles = StyleSheet.create({
   jarSection: {
     alignItems: 'center',
     zIndex: 10,
+    marginBottom: 12,
   },
   jarShakeContainer: {
     alignItems: 'center',
