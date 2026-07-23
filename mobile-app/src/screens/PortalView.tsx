@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   },
   wheelCard: {
     marginHorizontal: spacing.lg,
-    gap: spacing.md,
+    gap: 4,
   },
   wheelHeader: {
     flexDirection: 'row',
@@ -362,11 +362,10 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     fontSize: 13,
     color: colors.mutedForeground,
-    marginTop: -spacing.sm,
   },
   wheelContainer: {
     alignItems: 'center',
-    gap: spacing.lg,
+    gap: 4,
   },
   registerCard: {
     marginHorizontal: spacing.lg,
