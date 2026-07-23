@@ -308,6 +308,7 @@ export function LuckyJarSection({
   handleToggleRef.current = handleToggle
 
   useEffect(() => {
+    if (Platform.OS === 'web') return
     let sub: { remove: () => void } | null = null
     try {
       const { Accelerometer } = require('expo-sensors')
